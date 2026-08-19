@@ -1,0 +1,14 @@
+# dsh-builtin-browser bundle layer: one insert that mounts the built-in
+# browser plugin. Applied after every profile bundle layer; users override rows
+# by id in their profile cordis.patch.yml.
+#
+# The plugin itself only renders the browser UI and registers the agent tools.
+# The actual browsing surface is a <webview> provided by the Desktop shell
+# (Electron), so this row does nothing useful outside such a shell. The shell
+# must also run the companion HTTP control endpoint (desktop/main.js) and set
+# DSH_DESKTOP_BROWSER_PORT so the host half can reach it.
+- insert:
+    - id: builtin-browser
+      name: dsh-builtin-browser
+      config:
+        enabled: true

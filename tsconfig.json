@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "lib",
+    "rootDir": "src",
+    "declaration": true,
+    "sourceMap": false,
+    "paths": {
+      "@deepseek-ai/dsh-client-runtime/client": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/runtime/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-slots": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/ui-slots/lib/types/index.d.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["src/client"]
+}

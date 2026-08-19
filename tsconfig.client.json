@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true,
+    "paths": {
+      "@deepseek-ai/dsh-client-connection/client": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/connection/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-runtime/client": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/runtime/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-layout/client": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/ui-layout/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-sidebar/client": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/ui-sidebar/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-slots": ["/Users/en/Documents/proj/public/deepseek-harness/packages/client/ui-slots/lib/types/index.d.ts"]
+    }
+  },
+  "include": ["src/client"],
+  "exclude": []
+}

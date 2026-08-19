@@ -1,0 +1,1239 @@
+/* ── Reset ───────────────────────────────────────────────── */
+.ai-editor-root,
+.ai-editor-root * {
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+/* ── Hover box ───────────────────────────────────────────── */
+.ai-editor-hover-box {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483640;
+  border: 1.5px dashed rgba(0, 0, 0, 0.22);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.03);
+  opacity: 0;
+  transition: opacity 80ms ease;
+}
+
+/* ── Selection box ───────────────────────────────────────── */
+@keyframes ai-editor-sel-in {
+  from { opacity: 0; transform: scale(1.05); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.ai-editor-sel-box {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483641;
+  border: 2px solid #111;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.04);
+  opacity: 0;
+  transform-origin: center;
+  animation: ai-editor-sel-in 180ms cubic-bezier(0.2, 0, 0.1, 1) forwards;
+}
+
+/* Pro selection: precise double edge + one short neutral halo. */
+@keyframes ai-editor-pro-sel-in {
+  0% {
+    opacity: 0;
+    box-shadow: 0 0 0 0 rgba(17, 17, 17, 0);
+  }
+  48% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.94),
+      0 0 0 4px rgba(17, 17, 17, 0.08),
+      0 0 10px rgba(17, 17, 17, 0.08);
+  }
+  100% {
+    opacity: 1;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.90),
+      0 0 0 2px rgba(17, 17, 17, 0.14);
+  }
+}
+
+.ai-editor-hover-box.ai-editor-pro-hover {
+  border: 1px dashed rgba(17, 17, 17, 0.30);
+  background: rgba(17, 17, 17, 0.02);
+}
+
+.ai-editor-sel-box.ai-editor-pro-selection {
+  border: 1px solid #171717;
+  border-radius: 4px;
+  background: rgba(17, 17, 17, 0.018);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.90),
+    0 0 0 2px rgba(17, 17, 17, 0.14);
+  animation: ai-editor-pro-sel-in 220ms cubic-bezier(0.2, 0, 0.12, 1) forwards;
+}
+
+/* ── Corner handles ──────────────────────────────────────── */
+@keyframes ai-editor-corner-in {
+  from { opacity: 0; transform: scale(0); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.ai-editor-sel-corner {
+  position: fixed;
+  width: 7px;
+  height: 7px;
+  background: #111;
+  border: 1.5px solid #fff;
+  border-radius: 1.5px;
+  pointer-events: none;
+  z-index: 2147483642;
+  opacity: 0;
+  transform-origin: center;
+  animation: ai-editor-corner-in 220ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.ai-editor-sel-corner.ai-editor-pro-corner {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: #1b1b1b;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.20);
+}
+
+/* ── Label ───────────────────────────────────────────────── */
+@keyframes ai-editor-label-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ai-editor-sel-label {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483643;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #fff;
+  background: #111;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  opacity: 0;
+  animation: ai-editor-label-in 180ms ease forwards;
+}
+
+.ai-editor-sel-label.ai-editor-pro-selection-label {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  color: #fff;
+  background: #191919;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+/* Pro per-element actions stay matte so the selected target remains dominant. */
+.ai-editor-annotate-btn.ai-editor-pro-annotate {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  background: #242424;
+  color: #c9c9c9;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+.ai-editor-annotate-btn.ai-editor-pro-annotate:hover {
+  background: #333;
+  color: #fff;
+}
+.ai-editor-annotate-btn.ai-editor-pro-annotate.ai-editor-has-note {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: #111;
+  color: #fff;
+}
+
+/* ── Annotate button (per-element) ───────────────────────── */
+.ai-editor-annotate-btn {
+  position: fixed;
+  z-index: 2147483643;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: #333;
+  color: #aaa;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  animation: ai-editor-label-in 180ms ease forwards;
+  transition: background 100ms, color 100ms;
+}
+
+.ai-editor-annotate-btn:hover {
+  background: #555;
+  color: #fff;
+}
+
+.ai-editor-annotate-btn.ai-editor-has-note {
+  background: #2563eb;
+  color: #fff;
+}
+
+.ai-editor-annotate-btn.ai-editor-has-note:hover {
+  background: #1d4ed8;
+}
+
+/* ── Annotation popover ──────────────────────────────────── */
+.ai-editor-annotate-popover {
+  position: fixed;
+  z-index: 2147483646;
+  width: 240px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  user-select: text;
+}
+
+.ai-editor-annotate-input {
+  width: 100%;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  resize: none;
+  outline: none;
+  background: #fafafa;
+  color: #1a1a1a;
+  font-family: inherit;
+  transition: border-color 150ms;
+}
+
+.ai-editor-annotate-input:focus {
+  border-color: #111;
+  background: #fff;
+}
+
+.ai-editor-annotate-input::placeholder {
+  color: #bbb;
+}
+
+.ai-editor-annotate-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.ai-editor-annotate-done,
+.ai-editor-annotate-clear {
+  border: none;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.ai-editor-annotate-done {
+  background: #111;
+  color: #fff;
+}
+
+.ai-editor-annotate-done:hover {
+  background: #333;
+}
+
+.ai-editor-annotate-clear {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.ai-editor-annotate-clear:hover {
+  background: #e0e0e0;
+}
+
+/* ── Marquee (drag to select) ────────────────────────────── */
+.ai-editor-marquee {
+  position: fixed;
+  border: 1.5px dashed #555;
+  background: rgba(100, 120, 255, 0.06);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2147483645;
+}
+
+/* ── Chat panel ──────────────────────────────────────────── */
+.ai-editor-chat {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2147483644;
+  width: 300px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.03),
+    0 4px 6px -1px rgba(0, 0, 0, 0.06),
+    0 16px 32px -4px rgba(0, 0, 0, 0.11);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Drag handle ─────────────────────────────────────────── */
+.ai-editor-drag-handle {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  cursor: grab;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  transition: background 120ms;
+  padding: 0 6px 0 12px;
+}
+
+.ai-editor-drag-handle:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.ai-editor-drag-handle:active {
+  cursor: grabbing;
+}
+
+.ai-editor-drag-title {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  color: #bbb;
+  letter-spacing: 0.03em;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-editor-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  flex-shrink: 0;
+  transition: background 200ms;
+}
+
+.ai-editor-status-label {
+  color: #bbb;
+}
+
+.ai-editor-version {
+  color: #d8d8d8;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ── Pro edition (extension only) ─────────────────────────────
+   The body stays clean. Metal is limited to a narrow top reflection, the
+   edition mark and the primary action. */
+.ai-editor-chat.ai-editor-pro {
+  border: 1px solid rgba(17, 17, 17, 0.13);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 17, 0.025),
+    0 8px 24px -8px rgba(17, 17, 17, 0.16);
+}
+
+/* A single narrow reflection communicates the metal surface. */
+.ai-editor-chat.ai-editor-pro .ai-editor-drag-handle {
+  height: 33px;
+  border-bottom: 1px solid rgba(17, 17, 17, 0.08);
+  background: linear-gradient(180deg, #fcfcfc 0%, #f6f6f7 78%, #ececee 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.56);
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-drag-handle:hover {
+  background: linear-gradient(180deg, #fafafa 0%, #f2f2f3 100%);
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-status-label {
+  color: #888;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-panel-btn {
+  color: #aaa;
+  border-radius: 5px;
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-panel-btn:hover {
+  color: #333;
+  background: rgba(0, 0, 0, 0.045);
+}
+
+/* Matte graphite mark with one thin, directional reflection. */
+.ai-editor-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 14px;
+  padding: 1px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f5f5f5;
+  background: linear-gradient(110deg, #1c1c1e 0%, #242426 44%, #555558 50%, #242426 56%, #171719 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-editor-sel-box.ai-editor-pro-selection,
+  .ai-editor-sel-corner.ai-editor-pro-corner,
+  .ai-editor-sel-label.ai-editor-pro-selection-label,
+  .ai-editor-annotate-btn.ai-editor-pro-annotate {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The only other material surface: a calm graphite primary action. */
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn {
+  border: none;
+  background: linear-gradient(180deg, #29292c 0%, #151517 100%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: background 150ms, transform 100ms, box-shadow 150ms;
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn:hover {
+  background: linear-gradient(180deg, #343437 0%, #1d1d1f 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 4px rgba(0, 0, 0, 0.16);
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn:disabled {
+  background: #e3e3e3;
+  color: #aaa;
+  box-shadow: none;
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn.ai-editor-copy-done,
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn.ai-editor-copy-error {
+  background-image: none;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn.ai-editor-copy-done {
+  border-color: #15803d;
+  background: #16a34a;
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn.ai-editor-copy-error {
+  border-color: #b91c1c;
+  background: #dc2626;
+}
+.ai-editor-chat.ai-editor-pro .ai-editor-copy-btn.ai-editor-copy-loading {
+  background-color: #171719 !important;
+  background-image: linear-gradient(
+    100deg,
+    #171719 0%,
+    #171719 40%,
+    #555558 50%,
+    #171719 60%,
+    #171719 100%
+  ) !important;
+}
+
+.ai-editor-panel-actions {
+  display: flex;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.ai-editor-panel-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 100ms, background 100ms;
+  padding: 0;
+}
+
+.ai-editor-panel-btn:hover {
+  color: #444;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* ── Minimized state ─────────────────────────────────────── */
+.ai-editor-minimized {
+  width: auto !important;
+  min-width: 130px;
+}
+
+.ai-editor-minimized .ai-editor-drag-handle {
+  border-bottom: none;
+}
+
+/* ── Tags ────────────────────────────────────────────────── */
+.ai-editor-chat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px 4px;
+}
+
+.ai-editor-chat-tags.ai-editor-hidden {
+  display: none;
+}
+
+.ai-editor-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 8px;
+  background: #f5f5f5;
+  border: 1px solid #e8e8e8;
+  border-radius: 20px;
+  font-size: 11px;
+  color: #333;
+  max-width: 220px;
+  user-select: none;
+}
+
+.ai-editor-tag-num {
+  font-size: 10px;
+  color: #aaa;
+  flex-shrink: 0;
+  margin-right: 1px;
+}
+
+.ai-editor-tag-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Small thumbnail shown in a selection tag when the element is/contains an image. */
+.ai-editor-tag-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  margin-right: 4px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.ai-editor-tag-x {
+  background: none;
+  border: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin-left: 1px;
+  cursor: pointer;
+  color: #bbb;
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: color 100ms, background 100ms;
+}
+
+.ai-editor-tag-x:hover {
+  color: #333;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* ── Tags utility buttons ────────────────────────────────── */
+.ai-editor-tags-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  font-size: 10px;
+  color: #999;
+  cursor: pointer;
+  transition: color 100ms, border-color 100ms, background 100ms;
+  white-space: nowrap;
+}
+
+.ai-editor-tags-action:hover {
+  color: #333;
+  border-color: #bbb;
+  background: #f5f5f5;
+}
+
+/* ── Action buttons ──────────────────────────────────────── */
+.ai-editor-action-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 8px 8px;
+}
+
+.ai-editor-copy-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 8px 0;
+  border: none;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 150ms, transform 100ms;
+}
+
+.ai-editor-copy-btn:hover {
+  background: #333;
+}
+
+.ai-editor-copy-btn:active {
+  transform: scale(0.97);
+}
+
+.ai-editor-copy-btn:disabled {
+  background: #e0e0e0;
+  color: #aaa;
+  cursor: default;
+  transform: none;
+}
+
+.ai-editor-copy-btn.ai-editor-copy-done {
+  background: #16a34a;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  gap: 4px;
+}
+
+.ai-editor-copy-btn.ai-editor-copy-done * {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+.ai-editor-copy-btn.ai-editor-copy-error {
+  background: #dc2626;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+/* Preparing Markdown — a smooth sheen sweeps across the Copy button. */
+.ai-editor-copy-btn.ai-editor-copy-loading {
+  cursor: default;
+  /* !important so the 流光 sheen always wins — over the button's own :disabled
+     state AND over any aggressive button styles on the host page (a page rule
+     like `button:disabled{background:#e0e0e0!important}` was repainting it grey,
+     which is why the sheen sometimes vanished on real sites). */
+  color: #fff !important;
+  background-color: #111 !important;
+  background-image: linear-gradient(100deg, #111 0%, #111 42%, #6a6a6a 50%, #111 58%, #111 100%) !important;
+  background-size: 250% 100% !important;
+  animation: ai-editor-rev-sheen 1.15s linear infinite !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-editor-copy-btn.ai-editor-copy-loading { animation: none; }
+}
+
+.ai-editor-copy-btn .ai-editor-sharingan-icon {
+  width: 15px;
+  height: 15px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Copy Screenshot button ─────────────────────────────── */
+.ai-editor-screenshot-btn {
+  flex: 0 0 40px;
+  width: 40px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #777;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, transform 100ms, color 150ms;
+}
+
+.ai-editor-screenshot-btn:hover {
+  border-color: #bbb;
+  background: #fff;
+  color: #111;
+}
+
+.ai-editor-screenshot-btn:active {
+  transform: scale(0.97);
+}
+
+.ai-editor-screenshot-btn:disabled {
+  border-color: #e0e0e0;
+  background: #f3f3f3;
+  color: #c4c4c4;
+  cursor: default;
+  transform: none;
+}
+
+.ai-editor-screenshot-btn:disabled:hover {
+  border-color: #e0e0e0;
+  background: #f3f3f3;
+  color: #c4c4c4;
+}
+
+.ai-editor-screenshot-btn.ai-editor-screenshot-done {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+
+.ai-editor-screenshot-btn.ai-editor-screenshot-error {
+  border-color: #dc2626;
+  background: #dc2626;
+  color: #fff;
+}
+
+.ai-editor-save-btn {
+  flex: 0 0 auto;
+  min-width: 84px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid #dcdcdc;
+  border-radius: 8px;
+  background: #fafafa;
+  color: #666;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, transform 100ms, color 150ms;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.ai-editor-save-btn:hover {
+  border-color: #bbb;
+  background: #fff;
+  color: #111;
+}
+
+.ai-editor-save-btn:active {
+  transform: scale(0.98);
+}
+
+.ai-editor-save-btn:disabled {
+  color: #aaa;
+  cursor: default;
+  transform: none;
+}
+
+.ai-editor-save-btn.ai-editor-hidden {
+  display: none;
+}
+
+/* ── Shortcuts hint ─────────────────────────────────────── */
+.ai-editor-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 6px 10px;
+  font-size: 10px;
+  color: #999;
+}
+
+.ai-editor-shortcuts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.ai-editor-shortcuts kbd {
+  display: inline-block;
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-family: inherit;
+  color: #666;
+  line-height: 1.6;
+}
+
+
+/* ── Settings panel ──────────────────────────────────────── */
+.ai-editor-settings {
+  position: fixed;
+  z-index: 2147483647;
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.03),
+    0 4px 6px -1px rgba(0, 0, 0, 0.06),
+    0 16px 32px -4px rgba(0, 0, 0, 0.12);
+  padding: 2px 0 4px;
+  animation: ai-editor-settings-in 160ms cubic-bezier(0.2, 0, 0.1, 1) forwards;
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+@keyframes ai-editor-settings-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ai-editor-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  margin-bottom: 2px;
+}
+
+.ai-editor-settings-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #2a2a2a;
+  letter-spacing: 0.02em;
+  flex: 1;
+}
+
+.ai-editor-settings-close {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  color: #bbb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 100ms, background 100ms;
+}
+
+.ai-editor-settings-close:hover {
+  color: #444;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.ai-editor-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  gap: 12px;
+}
+
+.ai-editor-setting-row:hover {
+  background: rgba(0, 0, 0, 0.018);
+}
+
+.ai-editor-setting-group-title {
+  margin: 8px 12px 2px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  color: #aaa;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ai-editor-settings-header + .ai-editor-setting-group-title {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+
+@keyframes ai-editor-setting-flash {
+  0%   { background: rgba(0, 0, 0, 0.05); }
+  100% { background: transparent; }
+}
+
+.ai-editor-setting-flash {
+  animation: ai-editor-setting-flash 600ms ease forwards;
+}
+
+.ai-editor-setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-editor-setting-label-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ai-editor-setting-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #1f1f1f;
+}
+
+.ai-editor-setting-label-line .ai-editor-sharingan-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.ai-editor-setting-desc {
+  font-size: 10px;
+  color: #8a8a8a;
+  line-height: 1.25;
+}
+
+/* ── Settings-panel cross-link (bookmarklet ⇄ Pro extension) ──
+   Deliberately quiet: a thin divider + muted text, matching the panel's
+   restrained palette. No card fill, no accent colour. Free-only markup. */
+.ai-editor-settings-promo {
+  display: block;
+  margin: 6px 12px 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  text-decoration: none;
+}
+.ai-editor-settings-promo-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #4a4a4a;
+  transition: color 120ms;
+}
+.ai-editor-settings-promo-desc {
+  display: block;
+  font-size: 10px;
+  color: #999;
+  line-height: 1.4;
+  margin-top: 3px;
+}
+.ai-editor-settings-promo-cta {
+  display: inline-block;
+  font-size: 10px;
+  color: #777;
+  margin-top: 6px;
+  transition: color 120ms;
+}
+.ai-editor-settings-promo:hover .ai-editor-settings-promo-title,
+.ai-editor-settings-promo:hover .ai-editor-settings-promo-cta {
+  color: #222;
+}
+
+/* ── Small stroke icon shared by setting rows ── */
+.ai-editor-setting-icon {
+  width: 14px;
+  height: 14px;
+  color: #8a8a8a;
+  flex-shrink: 0;
+}
+
+/* ── Pro settings: clean shell, one reflective header ───────── */
+.ai-editor-settings.ai-editor-pro {
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(17, 17, 17, 0.02),
+    0 10px 28px -10px rgba(17, 17, 17, 0.16);
+}
+.ai-editor-settings.ai-editor-pro .ai-editor-settings-header {
+  background: linear-gradient(180deg, #fcfcfc 0%, #f6f6f7 78%, #ececee 100%);
+  border-bottom: 1px solid rgba(17, 17, 17, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 1),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.52);
+  margin-bottom: 2px;
+}
+.ai-editor-settings.ai-editor-pro .ai-editor-settings-title {
+  color: #222;
+  letter-spacing: 0.02em;
+}
+.ai-editor-settings.ai-editor-pro .ai-editor-setting-row:hover {
+  background: rgba(0, 0, 0, 0.025);
+}
+.ai-editor-settings.ai-editor-pro .ai-editor-setting-label {
+  color: #222;
+}
+.ai-editor-settings.ai-editor-pro .ai-editor-setting-desc {
+  color: #888;
+}
+
+.ai-editor-settings-pro {
+  margin: 8px 10px 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 9px;
+  background: #f7f7f8;
+  box-shadow: none;
+}
+.ai-editor-settings-pro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ai-editor-settings-pro-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.ai-editor-settings-pro-label-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ai-editor-settings-pro .ai-editor-pro-badge {
+  min-height: 14px;
+  padding: 2px 6px;
+  font-size: 7.5px;
+  letter-spacing: 0.09em;
+}
+.ai-editor-settings-pro-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+.ai-editor-settings-pro-hint {
+  font-size: 10px;
+  color: #888;
+  line-height: 1.3;
+  padding-left: 1px;
+}
+.ai-editor-settings-shortcut-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 9px;
+  border: 1px solid rgba(17, 17, 17, 0.11);
+  border-radius: 7px;
+  background: #fff;
+  color: #444;
+  font: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+  transition: background 120ms, border-color 120ms, color 120ms, transform 100ms, box-shadow 120ms;
+}
+.ai-editor-settings-shortcut-action:hover {
+  border-color: rgba(17, 17, 17, 0.24);
+  background: #fff;
+  color: #111;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.ai-editor-settings-shortcut-action:active { transform: scale(0.98); }
+.ai-editor-settings-shortcut-current {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid #dedede;
+  border-radius: 4px;
+  background: #f2f2f2;
+  color: #333;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.55;
+  letter-spacing: 0.02em;
+  box-shadow: none;
+}
+.ai-editor-settings-shortcut-current.ai-editor-settings-shortcut-unassigned {
+  border-color: #ddd;
+  background: #f4f4f4;
+  color: #777;
+}
+.ai-editor-settings-shortcut-edit {
+  font-size: 10px;
+  font-weight: 500;
+  color: #888;
+}
+.ai-editor-settings-shortcut-action:hover .ai-editor-settings-shortcut-edit {
+  color: #444;
+}
+
+.ai-editor-shortcut-record {
+  min-width: 72px;
+  max-width: 180px;
+  padding: 4px 7px;
+  border: 1px solid #dedede;
+  border-radius: 5px;
+  background: #f7f7f7;
+  color: #444;
+  font: 600 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.45;
+  cursor: pointer;
+  text-align: center;
+}
+.ai-editor-shortcut-record:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 1px;
+  background: #fff;
+}
+
+/* ── Markdown result panel — anchored above the chat menu ── */
+.ai-editor-revprompt {
+  position: fixed;
+  z-index: 2147483647;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.03),
+    0 4px 6px -1px rgba(0, 0, 0, 0.06),
+    0 16px 32px -4px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  animation: ai-editor-settings-in 160ms cubic-bezier(0.2, 0, 0.1, 1) forwards;
+}
+.ai-editor-revprompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.ai-editor-revprompt-title { font-size: 11px; font-weight: 600; color: #333; letter-spacing: 0.02em; }
+.ai-editor-revprompt-close {
+  width: 20px; height: 20px; border: none; background: none; color: #bbb;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; padding: 0; font-size: 15px; line-height: 1;
+  transition: color 100ms, background 100ms;
+}
+.ai-editor-revprompt-close:hover { color: #444; background: rgba(0, 0, 0, 0.06); }
+.ai-editor-revprompt-body { padding: 12px; }
+.ai-editor-revprompt-text {
+  font-size: 12px;
+  line-height: 1.65;
+  color: #2a2a2a;
+  max-height: 42vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+.ai-editor-revprompt-err { font-size: 12px; color: #c0392b; padding: 4px 2px; }
+@keyframes ai-editor-rev-sheen {
+  0%   { background-position: 130% 0; }
+  100% { background-position: -30% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-editor-revprompt { animation: none; opacity: 1; transform: none; }
+  .ai-editor-revprompt-sheen { animation: none; }
+}
+
+/* ── Toggle switch ────────────────────────────────────────── */
+.ai-editor-toggle {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 17px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.ai-editor-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.ai-editor-toggle-slider {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #ddd;
+  border-radius: 17px;
+  transition: background 180ms;
+}
+
+.ai-editor-toggle-slider::before {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.ai-editor-toggle input:checked + .ai-editor-toggle-slider {
+  background: #111;
+}
+
+.ai-editor-toggle input:checked + .ai-editor-toggle-slider::before {
+  transform: translateX(13px);
+}
+
+/* ── Language button ──────────────────────────────────────── */
+.ai-editor-lang-btn {
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #f8f8f8;
+  color: #444;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 100ms, border-color 100ms;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ai-editor-lang-btn:hover {
+  background: #eee;
+  border-color: #bbb;
+}
