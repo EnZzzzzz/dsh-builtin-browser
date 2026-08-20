@@ -142,7 +142,7 @@
     e.preventDefault(); e.stopPropagation(); removeAnnotationPopover();
     const sel = window.getSelection(); if (sel) sel.removeAllRanges();
     pushHistory(); const el = resolveNestedTargetFromSelection(e) || resolveTarget(resolveEventTarget(e));
-    if (e.shiftKey) toggleElement(el); else { clearUnannotatedSelections(); addSelection(el); }
+    if (e.shiftKey) toggleElement(el); else { clearUnannotatedSelections(); addSelection(el); showAnnotationPopover(el); }
     updateTags();
   }
 

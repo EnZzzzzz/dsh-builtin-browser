@@ -13,14 +13,14 @@
     const sendBtn = document.createElement("button");
     sendBtn.type = "button";
     sendBtn.className = `${NS}-send-btn`;
-    sendBtn.textContent = "\u53d1\u9001\u5230\u4f1a\u8bdd";
+    sendBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg><span>\u53d1\u9001\u5230\u4f1a\u8bdd</span>';
     sendBtn.title = "\u53d1\u9001\u5230\u4f1a\u8bdd";
     sendBtn.setAttribute("aria-label", "\u53d1\u9001\u5230\u4f1a\u8bdd");
     // Match the primary Copy Prompt button's look without sharing its class
     // (showCopyFeedback targets .ai-editor-copy-btn and would grab this too).
-    sendBtn.style.cssText = "flex:1;min-width:0;display:flex;align-items:center;justify-content:center;margin:0;padding:8px 0;border:none;border-radius:8px;background:#111;color:#fff;font-size:12px;font-weight:600;letter-spacing:0.02em;cursor:pointer;transition:background 150ms,transform 100ms;appearance:none;-webkit-appearance:none";
-    sendBtn.addEventListener("mouseenter", function () { if (!sendBtn.disabled) sendBtn.style.background = "#333"; });
-    sendBtn.addEventListener("mouseleave", function () { if (!sendBtn.disabled) sendBtn.style.background = "#111"; });
+    sendBtn.style.cssText = "flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;margin:0;padding:6px 0;border:none;border-radius:8px;background:#4D6BFE;color:#fff;font-size:12px;font-weight:600;letter-spacing:0.02em;cursor:pointer;transition:background 150ms,transform 100ms;appearance:none;-webkit-appearance:none";
+    sendBtn.addEventListener("mouseenter", function () { if (!sendBtn.disabled) sendBtn.style.background = "#3b58e8"; });
+    sendBtn.addEventListener("mouseleave", function () { if (!sendBtn.disabled) sendBtn.style.background = "#4D6BFE"; });
     sendBtn.addEventListener("mousedown", function () { if (!sendBtn.disabled) sendBtn.style.transform = "scale(0.97)"; });
     sendBtn.addEventListener("mouseup", function () { sendBtn.style.transform = ""; });
     sendBtn.onclick = function () {
@@ -37,7 +37,7 @@
     if (!sendBtn) return;
     const disabled = selectedElements.length === 0;
     sendBtn.disabled = disabled;
-    sendBtn.style.background = disabled ? "#e0e0e0" : "#111";
+    sendBtn.style.background = disabled ? "#e0e0e0" : "#4D6BFE";
     sendBtn.style.color = disabled ? "#aaa" : "#fff";
     sendBtn.style.cursor = disabled ? "default" : "pointer";
   }
