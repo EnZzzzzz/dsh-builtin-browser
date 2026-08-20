@@ -94,7 +94,7 @@ export function IconSquare(props: IconProps): ReactNode {
   const { size = 12 } = props
   return (
     <Svg size={size}>
-      <rect x="3" y="3" width="9" height="9" rx="1.5" fill="currentColor" />
+      <rect x="2.5" y="2.5" width="10" height="10" rx="1.5" fill="currentColor" />
     </Svg>
   )
 }

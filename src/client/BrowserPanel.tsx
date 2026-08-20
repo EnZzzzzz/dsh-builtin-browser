@@ -196,6 +196,9 @@ interface WebviewElement extends HTMLElement {
 /** Marks a webview element whose listeners are already attached. */
 const BOUND_FLAG = '__dshBrowserBound'
 
+/** Marks a surface element whose initial URL was assigned at bind time. */
+const SRC_FLAG = '__dshBrowserSrcSet'
+
 /**
  * The combined toolbar/tab row plus the page surfaces of the built-in browser.
  * @param _props - slot owner props (unused; the panel is frame-global).
@@ -239,14 +242,24 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
   }, [])
 
   // Bind one tab's page-surface element into the store so the shell's
-  // executeJavaScript controller can drive it too. Webview event listeners
-  // are attached once per element (BOUND_FLAG); they only touch component
-  // nav/loading state while their tab is the active one, but always keep
-  // the tab's title up to date for the strip.
+  // executeJavaScript controller can drive it too. The initial URL is
+  // assigned imperatively, exactly once per element: `src` is deliberately
+  // NOT a JSX prop, because React re-renders would rewrite the attribute on
+  // every address change, racing loadURL with a second navigation that
+  // ERR_ABORTs it and leaves the guest stuck on the old page. Webview event
+  // listeners are attached once per element (BOUND_FLAG); they only touch
+  // component nav/loading state while their tab is the active one, but
+  // always keep the tab's title up to date for the strip.
   const bindSurface = (tabId: number) => (el: HTMLElement | null): void => {
-    const wv = el as (WebviewElement & { [BOUND_FLAG]?: boolean }) | null
+    const wv = el as (WebviewElement & { [BOUND_FLAG]?: boolean; [SRC_FLAG]?: boolean }) | null
     browserStore.setSurface(tabId, wv)
-    if (!wv || !inShell || wv[BOUND_FLAG]) return
+    if (!wv) return
+    if (!wv[SRC_FLAG]) {
+      wv[SRC_FLAG] = true
+      const address = browserStore.get().tabs.find((t) => t.id === tabId)?.address
+      wv.setAttribute('src', address || BLANK_PAGE)
+    }
+    if (!inShell || wv[BOUND_FLAG]) return
     wv[BOUND_FLAG] = true
     const isActive = (): boolean => browserStore.get().activeTabId === tabId
     wv.addEventListener('did-navigate', () => {
@@ -398,19 +411,20 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
           title="刷新"
           aria-label="刷新"
         >
-          <IconRotateCw size={13.5} />
+          <IconRotateCw size={12} />
         </button>
-        {loading && (
-          <button
-            type="button"
-            className="dsh-browser-btn"
-            onClick={stop}
-            title="停止"
-            aria-label="停止"
-          >
-            <IconSquare size={10} />
-          </button>
-        )}
+        {/* Always rendered so the row doesn't reflow when a load starts;
+            disabled (dimmed) while idle, like the back/forward buttons. */}
+        <button
+          type="button"
+          className="dsh-browser-btn"
+          onClick={stop}
+          disabled={!loading}
+          title="停止"
+          aria-label="停止"
+        >
+          <IconSquare size={13.5} />
+        </button>
         <div style={tabsStyle} role="tablist" aria-label="标签页">
           {state.tabs.map((tab) => {
             const isEditing = editing?.id === tab.id
@@ -528,20 +542,20 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
         const hidden: CSSProperties = tab.id === active.id ? {} : { display: 'none' }
         return inShell ? (
           // Real Chromium guest inside the Desktop shell; stays mounted per
-          // tab so the session and history survive tab switches.
+          // tab so the session and history survive tab switches. No src prop:
+          // the initial URL is assigned once by bindSurface (see SRC_FLAG).
           <webview
             key={tab.id}
             ref={bindSurface(tab.id)}
-            src={tab.address || BLANK_PAGE}
             style={{ ...surfaceStyle, ...hidden }}
             allowpopups
           />
         ) : (
-          // Degraded frame in a plain browser tab.
+          // Degraded frame in a plain browser tab; initial URL likewise set
+          // once by bindSurface, later navigations go through setAttribute.
           <iframe
             key={tab.id}
             ref={bindSurface(tab.id)}
-            src={tab.address || BLANK_PAGE}
             style={{ ...surfaceStyle, ...hidden }}
             onLoad={() => {
               if (browserStore.get().activeTabId !== tab.id) return
