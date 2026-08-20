@@ -387,12 +387,20 @@
   }
 
   // ── Hover overlay ────────────────────────────────────────────
+  let lastHoverEl = null;
   function createHoverBox() { hoverBox = document.createElement("div"); hoverBox.className = `${NS}-hover-box${HOST.isExtension ? ` ${NS}-pro-hover` : ""}`; document.body.appendChild(hoverBox); }
   function showHover(el) {
-    if (!el || isEditorElement(el) || selectedElements.includes(el)) { hoverBox.style.opacity = "0"; return; }
+    if (!el || isEditorElement(el) || selectedElements.includes(el)) { hoverBox.style.opacity = "0"; lastHoverEl = null; return; }
     const r = el.getBoundingClientRect();
     hoverBox.style.top = (r.top-1)+"px"; hoverBox.style.left = (r.left-1)+"px";
     hoverBox.style.width = (r.width+2)+"px"; hoverBox.style.height = (r.height+2)+"px"; hoverBox.style.opacity = "1";
+    if (el !== lastHoverEl) {
+      lastHoverEl = el;
+      // Replay the grow-in pop each time the hover target changes.
+      hoverBox.classList.remove(`${NS}-hover-pop`);
+      void hoverBox.offsetWidth;
+      hoverBox.classList.add(`${NS}-hover-pop`);
+    }
   }
 
   // ── Mouse handling ───────────────────────────────────────────
