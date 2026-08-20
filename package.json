@@ -29,7 +29,8 @@
     "build": "tsc -p tsconfig.json && npm run build:client",
     "build:host": "tsc -p tsconfig.json",
     "build:client": "node vendor/selector/build.mjs && tsdown",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json",
+    "playground": "node playground/dev.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.0",
@@ -47,6 +48,7 @@
     "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
     "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
+    "react-dom": "^18.3.1",
     "tsdown": "^0.22.0",
     "typescript": "^5.6.0"
   },

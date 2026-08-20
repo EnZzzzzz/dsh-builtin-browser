@@ -9,6 +9,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { browserStore } from './store.js'
+import { IconGlobe } from './icons.js'
 
 /**
  * Runtime props of the sidebar.footer.action entry: the owner share (wide)
@@ -37,7 +38,7 @@ export function BrowserToggle(props: BrowserToggleProps): ReactNode {
       style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: wide ? 'flex-start' : 'center',
         gap: 6,
         width: '100%',
         border: 'none',
@@ -49,7 +50,7 @@ export function BrowserToggle(props: BrowserToggleProps): ReactNode {
         fontSize: 14,
       }}
     >
-      <span role="img" aria-hidden="true">🌐</span>
+      <IconGlobe size={16} />
       {wide && <span>{label}</span>}
     </button>
   )

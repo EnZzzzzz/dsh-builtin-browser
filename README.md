@@ -1,6 +1,6 @@
 # dsh-builtin-browser
 
-给 Desktop 封装的 DeepSeek Harness 提供**内置浏览器**的双面插件:侧边栏一个"内置浏览器"按钮,点开一个带地址栏的真浏览器面板;同时给 agent 提供 `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` 工具,模型可以直接驱动这个浏览器。
+给 Desktop 封装的 DeepSeek Harness 提供**内置浏览器**的双面插件:侧边栏一个"内置浏览器"按钮,点开一个多标签的真浏览器面板(双击标签即可输入网址);同时给 agent 提供 `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` 工具,模型可以直接驱动这个浏览器。
 
 真正的浏览器引擎不在 DSH 里,而在你的 Desktop 外壳(Electron)里:外壳用 `<webview>` 元素(完整 Chromium guest)承载页面,并跑一个 loopback HTTP 控制端点;本插件只是这个 webview 的**遥控器**——UI、工具、命令转发。`desktop/` 目录提供外壳侧完整代码。
 
@@ -17,7 +17,7 @@
 │  ┌─ harness web GUI 页面 ─────────────────────────────────┐  │
 │  │  Client 半区(本插件):                                    │  │
 │  │   · sidebar.footer.action  → 「内置浏览器」开关按钮        │  │
-│  │   · shell.overlay          → 悬浮面板(地址栏+webview)    │  │
+│  │   · shell.overlay          → 悬浮面板(标签页+webview)    │  │
 │  │   · window.__dshBrowser    → 页面侧命令控制器             │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
@@ -89,7 +89,7 @@ dsh plugin --profile web add /path/to/dsh-builtin-browser
 
 ### 3. 验证
 
-- 手动:点按钮 → 面板出现 → 地址栏输入 `https://example.com` 回车。
+- 手动:点按钮 → 面板出现 → 双击标签(或点 + 新建)输入 `https://example.com` 回车。
 - agent:直接对会话说"打开 example.com 并告诉我标题",模型会调 `browser_navigate`。
 - 工具失败提示 `browser control endpoint unavailable` → 检查外壳是否在跑、`DSH_DESKTOP_BROWSER_PORT` 是否可见。
 

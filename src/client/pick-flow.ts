@@ -100,7 +100,7 @@ async function pollTick(): Promise<void> {
   try {
     result = await wv.executeJavaScript(buildPollExpression(), false)
   } catch {
-    // Guest destroyed mid-navigation (address-bar nav while picking).
+    // Guest destroyed mid-navigation (manual nav while picking).
     void stopPicking()
     return
   }
