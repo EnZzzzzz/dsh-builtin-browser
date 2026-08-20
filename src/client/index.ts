@@ -36,7 +36,7 @@ export const inject = ['slots']
 const CONTROLLER_KEY = '__dshBrowser'
 
 /**
- * Defensive slash-command guard. Selector prompts always start with `Page:`, so
+ * Defensive slash-command guard. Selector prompts always start with `##`, so
  * this never fires in practice, but a leading `/` would otherwise be parsed as a
  * dsh slash command. A zero-width first line keeps the text out of that branch.
  * @param text - the prompt text to guard.
@@ -50,7 +50,7 @@ function guardSlash(text: string): string {
  * lazily (at send time, not apply time) and throws a user-facing message on the
  * "no active session" and RPC-failure paths for the pick flow's toast.
  * @param ctx - the browser plugin context.
- * @param text - the prompt text (Selector format, `Page:`-led).
+ * @param text - the prompt text (Selector's Design-Feedback markdown).
  */
 async function sendToSession(ctx: ClientContext, text: string): Promise<void> {
   const sessions = ctx.get('sessions')

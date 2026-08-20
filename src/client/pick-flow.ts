@@ -66,7 +66,7 @@ async function startPicking(): Promise<void> {
   const wv = browserStore.getSurface()
   if (!wv?.executeJavaScript) return
   try {
-    await wv.executeJavaScript(buildInjectionCode(), true)
+    await wv.executeJavaScript(buildInjectionCode(browserStore.get().activeTabId), true)
   } catch {
     // Injection failed (e.g. mid-navigation); stay idle.
     return

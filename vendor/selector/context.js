@@ -520,6 +520,86 @@
     return /\b(container|layout|grid|row|toolbar|header|footer|sidebar|content)\b/i.test(Array.from(el.classList).join(" "));
   }
 
+  // ── Location helpers (Design Feedback prompt) ──────────────
+  // One path segment: tag#id, tag.class1.class2, tag[aria-label="..."],
+  // or tag:nth-of-type(n) when nothing stable is available.
+  function domPathSegment(el, withAria) {
+    const tag = el.tagName.toLowerCase();
+    if (el.id && isStableToken(el.id)) return `${tag}#${escapeIdent(el.id)}`;
+    let seg = tag;
+    const cls = stableClasses(el).slice(0, 2);
+    if (cls.length) seg += cls.map(c => "." + escapeIdent(c)).join("");
+    if (withAria) {
+      const aria = el.getAttribute("aria-label");
+      if (aria) seg += `[aria-label="${escapeAttr(truncate(aria, 24))}"]`;
+    }
+    if (!cls.length) {
+      const p = el.parentElement;
+      if (p) {
+        const same = Array.from(p.children).filter(c => c.tagName === el.tagName);
+        if (same.length > 1) seg += `:nth-of-type(${same.indexOf(el) + 1})`;
+      }
+    }
+    return seg;
+  }
+  // `body > div#root > div > div` — always anchored at body.
+  function fullDomPath(el) {
+    const parts = []; let node = el;
+    while (node && node.tagName) {
+      parts.unshift(domPathSegment(node, false));
+      if (node === document.body || node === document.documentElement) break;
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+  // `#root > div[aria-label="..."] > div` — starts at the nearest ancestor
+  // with a stable id, segments carry aria-labels for readability.
+  function prettyLocation(el) {
+    const parts = []; let node = el;
+    while (node && node !== document.body && node !== document.documentElement) {
+      parts.unshift(domPathSegment(node, true));
+      if (node.id && isStableToken(node.id)) { parts[0] = "#" + escapeIdent(node.id); break; }
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+  function boundsStr(el) {
+    const r = el.getBoundingClientRect();
+    return `x=${Math.round(r.x)}, y=${Math.round(r.y)}, ${Math.round(r.width)}x${Math.round(r.height)}`;
+  }
+  // Up to 5 visible siblings as `tag.class` segments, deduped.
+  function nearbyElements(el) {
+    const p = el.parentElement; if (!p) return [];
+    const out = [];
+    for (const sib of Array.from(p.children)) {
+      if (sib === el || !isVisible(sib)) continue;
+      const seg = domPathSegment(sib, false);
+      if (!out.includes(seg)) out.push(seg);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }
+  function computedStylesList(el) {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const dim = (n) => `${Math.round(n * 10) / 10}px`;
+    const bw = parseFloat(cs.borderTopWidth);
+    return [
+      `display: ${cs.display}`,
+      `width: ${dim(r.width)}`,
+      `height: ${dim(r.height)}`,
+      `margin: ${compactCssValue(cs.margin)}`,
+      `padding: ${compactCssValue(cs.padding)}`,
+      `color: ${cs.color}`,
+      `border: ${bw > 0 ? `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}` : `0px none ${cs.color}`}`,
+      `border-radius: ${cs.borderRadius}`,
+      `font-family: ${compactCssValue(cs.fontFamily)}`,
+      `font-size: ${cs.fontSize}`,
+      `font-weight: ${cs.fontWeight}`,
+      `text-align: ${cs.textAlign}`,
+    ];
+  }
+
   function buildSelector(el) {
     const direct = bestDirectSelector(el);
     if (direct) return direct;

@@ -23,7 +23,9 @@ const STYLE_ID = '__dsh_selector_style'
 export const OUTBOX_KEY = '__dshSelectorOutbox'
 
 /** Seed the host seam the editor's core.js reads before it initializes. */
-const HOST_SEED = `window.__SELECTOR_HOST__ = { initialLang: 'zh', sendPrompt: function (text) { window.${OUTBOX_KEY} = text; } };`
+function hostSeed(tabId: number | undefined): string {
+  return `window.__SELECTOR_HOST__ = { initialLang: 'zh', tabId: ${tabId === undefined ? 'null' : JSON.stringify(tabId)}, sendPrompt: function (text) { window.${OUTBOX_KEY} = text; } };`
+}
 
 /** Idempotently inject the editor stylesheet as a `<style>` element. */
 const CSS_INJECT = `(function () {
@@ -40,8 +42,8 @@ const CSS_INJECT = `(function () {
  * The editor bundle's own `.ai-editor-root` guard makes repeated injection a
  * soft resume, so double-clicking the ⌖ button never stacks instances.
  */
-export function buildInjectionCode(): string {
-  return `${HOST_SEED}\n${CSS_INJECT}\n${editorBundle}`
+export function buildInjectionCode(tabId?: number): string {
+  return `${hostSeed(tabId)}\n${CSS_INJECT}\n${editorBundle}`
 }
 
 /**

@@ -2178,33 +2178,51 @@
   }
 
 // ── Prompt building ────────────────────────────────────────
+  // Design-Feedback-style markdown: each picked element carries enough
+  // location context (selector, DOM path, bounds, computed styles, HTML) for
+  // an AI to find it again later. `Browser tab id` only appears when the host
+  // seeds HOST.tabId (the builtin-browser plugin); the free bookmarklet omits
+  // the line.
   function buildPromptText() {
     if (selectedElements.length === 0) return "";
-    const pageContext = currentPageContext();
-    const lines = ["Page: " + pageContext.page];
-    if (pageContext.query) lines.push("Query: " + pageContext.query);
-    lines.push("");
+    let pathname = "/";
+    try { pathname = (location.pathname + location.hash) || "/"; } catch(_) {}
+    const lines = [`## Design Feedback: ${pathname}`, "", `**URL:** ${location.href}`];
+    if (HOST.tabId !== undefined && HOST.tabId !== null) lines.push(`**Browser tab id:** ${HOST.tabId}`);
+    lines.push(`**Viewport:** ${window.innerWidth}x${window.innerHeight}`, "");
     selectedElements.forEach((el, i) => {
       const aiId = el.getAttribute(AI_ID);
       const note = annotations.get(aiId);
       const ctx = buildElementContext(el, i + 1, note);
-      lines.push(`${i + 1}. ${ctx.title} <${ctx.tag}>`);
-      if (ctx.selector) lines.push(`   selector: ${ctx.selector}`);
-      if (ctx.locator) lines.push(`   locator: ${ctx.locator}`);
+      const reactChain = ctx.react ? ctx.react.split(" › ").map(n => `<${n}>`).join(" ") : "";
+      // Avoid the redundant `<Shell> Shell "..."` header: when the title's
+      // kind IS the last React component name, show the tag instead.
+      let title = ctx.title;
+      const lastComp = ctx.react && ctx.react.split(" › ").pop();
+      if (lastComp && title.startsWith(lastComp)) title = ctx.tag + title.slice(lastComp.length);
+      lines.push(`### ${i + 1}. ${reactChain ? reactChain + " " : ""}${title}`);
+      const selector = buildSelector(el);
+      if (selector) lines.push(`**Selector:** \`${selector}\``);
+      const pretty = prettyLocation(el);
+      if (pretty) lines.push(`**Location:** \`${pretty}\``);
+      if (reactChain) lines.push(`**React:** ${reactChain}`);
+      if (ctx.vue) lines.push(`**Vue:** ${ctx.vue.split(" › ").map(n => `<${n}>`).join(" ")}`);
+      if (ctx.source) lines.push(`**Source:** ${ctx.source}`);
+      lines.push(`**Bounds:** ${boundsStr(el)}`);
+      if (ctx.text) lines.push(`**Text:** "${ctx.text}"`);
+      const nearby = nearbyElements(el);
+      if (nearby.length) lines.push("**Nearby elements:**", ...nearby.map(s => `- ${s}`));
+      lines.push("**Computed styles:**", ...computedStylesList(el).map(s => `- ${s}`));
+      lines.push(`**Full DOM path:** \`${fullDomPath(el)}\``);
+      if (ctx.inside) lines.push(`**Inside:** ${ctx.inside}`);
+      if (ctx.parent) lines.push(`**Parent:** ${ctx.parent}`);
+      if (ctx.reactProps) lines.push(`**Props:** ${ctx.reactProps}`);
+      Object.entries(ctx.dataAttrs).forEach(([k, v]) => lines.push(`**${k}:** ${v}`));
       const testLocators = hostTestLocators(el);
-      if (testLocators) lines.push(`   test: ${testLocators[0]}`);
-      if (ctx.inside) lines.push(`   inside: ${ctx.inside}`);
-      if (ctx.source) lines.push(`   source: ${ctx.source}`);
-      if (ctx.react) lines.push(`   react: ${ctx.react}`);
-      if (ctx.vue) lines.push(`   vue: ${ctx.vue}`);
-      if (ctx.text) lines.push(`   text: "${ctx.text}"`);
-      Object.entries(ctx.dataAttrs).forEach(([k, v]) => lines.push(`   ${k}: ${v}`));
-      if (ctx.visual) lines.push(`   visual: ${ctx.visual}`);
-      if (ctx.layout) lines.push(`   layout: ${ctx.layout}`);
-      if (ctx.parent) lines.push(`   parent: ${ctx.parent}`);
-      if (ctx.outerHTML) lines.push(`   html: ${ctx.outerHTML}`);
-      if (ctx.reactProps) lines.push(`   props: ${ctx.reactProps}`);
-      if (note) lines.push(`   instruction: ${note}`);
+      if (testLocators) lines.push(`**Test:** ${testLocators[0]}`);
+      lines.push("**HTML:**", "````html", truncateHtml(el.outerHTML, 1500), "````");
+      if (note) lines.push(`**Feedback:** ${note}`);
+      lines.push("");
     });
     return lines.join("\n");
   }
@@ -4804,6 +4822,86 @@
     const tag = el.tagName.toLowerCase();
     if (/^(main|section|article|aside|nav|header|footer)$/.test(tag)) return true;
     return /\b(container|layout|grid|row|toolbar|header|footer|sidebar|content)\b/i.test(Array.from(el.classList).join(" "));
+  }
+
+  // ── Location helpers (Design Feedback prompt) ──────────────
+  // One path segment: tag#id, tag.class1.class2, tag[aria-label="..."],
+  // or tag:nth-of-type(n) when nothing stable is available.
+  function domPathSegment(el, withAria) {
+    const tag = el.tagName.toLowerCase();
+    if (el.id && isStableToken(el.id)) return `${tag}#${escapeIdent(el.id)}`;
+    let seg = tag;
+    const cls = stableClasses(el).slice(0, 2);
+    if (cls.length) seg += cls.map(c => "." + escapeIdent(c)).join("");
+    if (withAria) {
+      const aria = el.getAttribute("aria-label");
+      if (aria) seg += `[aria-label="${escapeAttr(truncate(aria, 24))}"]`;
+    }
+    if (!cls.length) {
+      const p = el.parentElement;
+      if (p) {
+        const same = Array.from(p.children).filter(c => c.tagName === el.tagName);
+        if (same.length > 1) seg += `:nth-of-type(${same.indexOf(el) + 1})`;
+      }
+    }
+    return seg;
+  }
+  // `body > div#root > div > div` — always anchored at body.
+  function fullDomPath(el) {
+    const parts = []; let node = el;
+    while (node && node.tagName) {
+      parts.unshift(domPathSegment(node, false));
+      if (node === document.body || node === document.documentElement) break;
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+  // `#root > div[aria-label="..."] > div` — starts at the nearest ancestor
+  // with a stable id, segments carry aria-labels for readability.
+  function prettyLocation(el) {
+    const parts = []; let node = el;
+    while (node && node !== document.body && node !== document.documentElement) {
+      parts.unshift(domPathSegment(node, true));
+      if (node.id && isStableToken(node.id)) { parts[0] = "#" + escapeIdent(node.id); break; }
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+  function boundsStr(el) {
+    const r = el.getBoundingClientRect();
+    return `x=${Math.round(r.x)}, y=${Math.round(r.y)}, ${Math.round(r.width)}x${Math.round(r.height)}`;
+  }
+  // Up to 5 visible siblings as `tag.class` segments, deduped.
+  function nearbyElements(el) {
+    const p = el.parentElement; if (!p) return [];
+    const out = [];
+    for (const sib of Array.from(p.children)) {
+      if (sib === el || !isVisible(sib)) continue;
+      const seg = domPathSegment(sib, false);
+      if (!out.includes(seg)) out.push(seg);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }
+  function computedStylesList(el) {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const dim = (n) => `${Math.round(n * 10) / 10}px`;
+    const bw = parseFloat(cs.borderTopWidth);
+    return [
+      `display: ${cs.display}`,
+      `width: ${dim(r.width)}`,
+      `height: ${dim(r.height)}`,
+      `margin: ${compactCssValue(cs.margin)}`,
+      `padding: ${compactCssValue(cs.padding)}`,
+      `color: ${cs.color}`,
+      `border: ${bw > 0 ? `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}` : `0px none ${cs.color}`}`,
+      `border-radius: ${cs.borderRadius}`,
+      `font-family: ${compactCssValue(cs.fontFamily)}`,
+      `font-size: ${cs.fontSize}`,
+      `font-weight: ${cs.fontWeight}`,
+      `text-align: ${cs.textAlign}`,
+    ];
   }
 
   function buildSelector(el) {
