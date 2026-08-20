@@ -198,6 +198,107 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
   })
 
+  const contentTool = defineTool({
+    name: 'browser_content',
+    description: 'Read the visible text of the current browser page, returning its title, URL, and body text (capped at 50000 characters).',
+    parameters: {},
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value: unknown): ContentBlock[] => {
+        const v = value as { ok?: boolean; error?: string; title?: string; url?: string; text?: string; truncated?: boolean }
+        if (v.ok === false) return [{ type: 'text', text: `browser_content failed: ${v.error ?? 'unknown error'}` }]
+        const suffix = v.truncated ? '\n[truncated: page text exceeds 50000 characters]' : ''
+        return [{ type: 'text', text: `${v.title ?? ''} (${v.url ?? '?'})\n\n${v.text ?? ''}${suffix}` }]
+      },
+    },
+    async execute(): Promise<JsonValue> {
+      const endpoint = resolveEndpoint()
+      if (!endpoint) return endpointUnavailable()
+      return endpoint.command({ op: 'content' })
+    },
+  })
+
+  const screenshotTool = defineTool({
+    name: 'browser_screenshot',
+    description: 'Capture a PNG screenshot of the current browser page. Returns the path of the saved file; read it back with your file tools.',
+    parameters: {},
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value: unknown): ContentBlock[] => {
+        const v = value as { ok?: boolean; error?: string; path?: string; width?: number; height?: number }
+        if (v.ok === false) return [{ type: 'text', text: `browser_screenshot failed: ${v.error ?? 'unknown error'}` }]
+        return [{ type: 'text', text: `Screenshot saved: ${v.path ?? '?'} (${v.width ?? 0}x${v.height ?? 0})` }]
+      },
+    },
+    async execute(): Promise<JsonValue> {
+      const endpoint = resolveEndpoint()
+      if (!endpoint) return endpointUnavailable()
+      return endpoint.command({ op: 'screenshot' })
+    },
+  })
+
+  interface TabInfo { id: number; url?: string; title?: string; active?: boolean }
+
+  const tabListTool = defineTool({
+    name: 'browser_tab_list',
+    description: 'List all tabs of the built-in browser with their id, URL, title, and which one is active.',
+    parameters: {},
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value: unknown): ContentBlock[] => {
+        const v = value as { ok?: boolean; error?: string; tabs?: TabInfo[] }
+        if (v.ok === false) return [{ type: 'text', text: `browser_tab_list failed: ${v.error ?? 'unknown error'}` }]
+        const lines = (v.tabs ?? []).map((t) => `${t.active ? '*' : ' '} #${t.id} ${t.title || '(untitled)'} — ${t.url || 'about:blank'}`)
+        return [{ type: 'text', text: lines.length ? lines.join('\n') : '(no tabs)' }]
+      },
+    },
+    async execute(): Promise<JsonValue> {
+      const endpoint = resolveEndpoint()
+      if (!endpoint) return endpointUnavailable()
+      return endpoint.command({ op: 'tab-list' })
+    },
+  })
+
+  const tabNewTool = defineTool({
+    name: 'browser_tab_new',
+    description: 'Open a new blank tab in the built-in browser and make it active. Follow up with browser_navigate to load a URL in it.',
+    parameters: {},
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value: unknown): ContentBlock[] => {
+        const v = value as { ok?: boolean; error?: string; id?: number }
+        if (v.ok === false) return [{ type: 'text', text: `browser_tab_new failed: ${v.error ?? 'unknown error'}` }]
+        return [{ type: 'text', text: `Opened tab #${v.id ?? '?'}` }]
+      },
+    },
+    async execute(): Promise<JsonValue> {
+      const endpoint = resolveEndpoint()
+      if (!endpoint) return endpointUnavailable()
+      return endpoint.command({ op: 'tab-new' })
+    },
+  })
+
+  const tabIdTool = (toolName: string, description: string, op: string) => defineTool({
+    name: toolName,
+    description,
+    parameters: {
+      id: { type: 'number', required: true, description: 'Tab id from browser_tab_list' },
+    },
+    output: {
+      schema: { type: 'json' },
+      render: (_args, value: unknown): ContentBlock[] => {
+        const v = value as { ok?: boolean; error?: string }
+        if (v.ok === false) return [{ type: 'text', text: `${toolName} failed: ${v.error ?? 'unknown error'}` }]
+        return [{ type: 'text', text: `${toolName} → ok` }]
+      },
+    },
+    async execute(args: { id: number }): Promise<JsonValue> {
+      const endpoint = resolveEndpoint()
+      if (!endpoint) return endpointUnavailable()
+      return endpoint.command({ op, id: args.id })
+    },
+  })
+
   // Register every tool once the tools service is available; the inject
   // callback returns one disposer that unregisters all of them.
   ctx.inject(['tools'], (toolsCtx) => {
@@ -208,9 +309,15 @@ export function apply(ctx: Context, config: Config = {}): void {
       navTool('browser_reload', 'Reload the current page in the built-in browser.', 'reload'),
       navTool('browser_stop', 'Stop the current page load in the built-in browser.', 'stop'),
       evalTool,
+      contentTool,
+      screenshotTool,
+      tabListTool,
+      tabNewTool,
+      tabIdTool('browser_tab_switch', 'Switch the active tab of the built-in browser. Subsequent browser commands apply to that tab.', 'tab-activate'),
+      tabIdTool('browser_tab_close', 'Close one tab of the built-in browser. Closing the last tab leaves a fresh blank tab.', 'tab-close'),
     ].map((t) => toolsCtx.tools.register(t))
     return () => disposers.forEach((dispose) => dispose())
   })
 
-  ctx.logger.info('[builtin-browser] mounted: browser_navigate / browser_back / browser_forward / browser_reload / browser_stop / browser_eval')
+  ctx.logger.info('[builtin-browser] mounted: browser_navigate / browser_back / browser_forward / browser_reload / browser_stop / browser_eval / browser_content / browser_screenshot / browser_tab_list / browser_tab_new / browser_tab_switch / browser_tab_close')
 }

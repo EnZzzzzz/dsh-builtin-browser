@@ -213,6 +213,10 @@ export const browserStore = {
   },
 }
 
+/** Cap on page text returned by the `content` op, so a huge page cannot
+ * flood the agent's context. */
+const CONTENT_TEXT_LIMIT = 50_000
+
 /**
  * The global controller the Desktop shell drives via executeJavaScript
  * (desktop/main.cjs forwards `/browser/command` here). Commands always apply
@@ -220,8 +224,38 @@ export const browserStore = {
  * to the harness host half verbatim.
  */
 export const pageBrowserController = {
-  async command(payload: { op?: string; url?: string; script?: string }): Promise<unknown> {
+  async command(payload: { op?: string; url?: string; script?: string; id?: number | string }): Promise<unknown> {
     const el = browserStore.getSurface()
+    switch (payload.op) {
+      // Tab bookkeeping works even without a mounted surface.
+      case 'tab-list': {
+        const { tabs, activeTabId } = browserStore.get()
+        return {
+          ok: true,
+          tabs: tabs.map((t) => ({ id: t.id, url: t.current, title: t.title, active: t.id === activeTabId })),
+        }
+      }
+      case 'tab-new': {
+        const id = browserStore.addTab()
+        return { ok: true, id }
+      }
+      case 'tab-close': {
+        const id = Number(payload.id)
+        if (!browserStore.get().tabs.some((t) => t.id === id)) {
+          return { ok: false, error: `no such tab: ${String(payload.id)}` }
+        }
+        browserStore.closeTab(id)
+        return { ok: true }
+      }
+      case 'tab-activate': {
+        const id = Number(payload.id)
+        if (!browserStore.get().tabs.some((t) => t.id === id)) {
+          return { ok: false, error: `no such tab: ${String(payload.id)}` }
+        }
+        browserStore.activateTab(id)
+        return { ok: true, id }
+      }
+    }
     if (!el) return { ok: false, error: 'browser panel not mounted' }
     switch (payload.op) {
       case 'navigate': {
@@ -265,6 +299,34 @@ export const pageBrowserController = {
         catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
+      }
+      case 'content': {
+        if (!el.executeJavaScript) {
+          return { ok: false, error: 'executeJavaScript unavailable outside the Electron shell' }
+        }
+        try {
+          const text = await el.executeJavaScript(
+            'document.body ? document.body.innerText : ""', true,
+          )
+          const full = typeof text === 'string' ? text : ''
+          return {
+            ok: true,
+            url: el.getURL?.() ?? '',
+            title: el.getTitle?.() ?? '',
+            text: full.slice(0, CONTENT_TEXT_LIMIT),
+            truncated: full.length > CONTENT_TEXT_LIMIT,
+          }
+        }
+        catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      }
+      case 'screenshot': {
+        // The actual capture happens in the shell's main process
+        // (webContents.capturePage); we just hand over the guest id.
+        const id = el.getWebContentsId?.()
+        if (!id) return { ok: false, error: 'webContents id unavailable outside the Electron shell' }
+        return { ok: true, webContentsId: id }
       }
       default:
         return { ok: false, error: `unknown browser command: ${payload.op}` }

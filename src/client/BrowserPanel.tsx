@@ -174,6 +174,17 @@ function tabLabel(tab: BrowserTab): string {
 }
 
 /**
+ * Standard Chrome UA for the webview guest. The shell page's own UA is
+ * `... Chrome/x.y.z Electron/a.b.c Safari/...`; dropping the Electron segment
+ * yields the matching vanilla Chrome UA. Bot detection (e.g. Cloudflare)
+ * rejects the Electron marker outright, so the guest must not send it.
+ */
+function chromeUserAgent(): string {
+  if (typeof navigator === 'undefined') return ''
+  return navigator.userAgent.replace(/\s+Electron\/[\d.]+/, '')
+}
+
+/**
  * Thin wrapper over the Electron `<webview>` element's native API. The element
  * methods are not typed by React, so this module declares the slice we use and
  * guards every call.
@@ -549,6 +560,11 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
             ref={bindSurface(tab.id)}
             style={{ ...surfaceStyle, ...hidden }}
             allowpopups
+            // Standard Chrome UA (no Electron marker) so bot detection treats
+            // the guest as a normal browser; persist partition keeps cookies
+            // and login state across sessions instead of a fresh identity.
+            useragent={chromeUserAgent()}
+            partition="persist:dsh-browser"
           />
         ) : (
           // Degraded frame in a plain browser tab; initial URL likewise set

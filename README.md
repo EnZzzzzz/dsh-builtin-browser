@@ -1,6 +1,6 @@
 # dsh-builtin-browser
 
-给 Desktop 封装的 DeepSeek Harness 提供**内置浏览器**的双面插件:侧边栏一个"内置浏览器"按钮,点开一个多标签的真浏览器面板(双击标签即可输入网址);同时给 agent 提供 `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` 工具,模型可以直接驱动这个浏览器。
+给 Desktop 封装的 DeepSeek Harness 提供**内置浏览器**的双面插件:侧边栏一个"内置浏览器"按钮,点开一个多标签的真浏览器面板(双击标签即可输入网址);同时给 agent 提供 `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` / `browser_content` / `browser_screenshot` / `browser_tab_list` / `browser_tab_new` / `browser_tab_switch` / `browser_tab_close` 工具,模型可以直接驱动这个浏览器(导航、读页面内容、截图、多标签管理)。
 
 真正的浏览器引擎不在 DSH 里,而在你的 Desktop 外壳(Electron)里:外壳用 `<webview>` 元素(完整 Chromium guest)承载页面,并跑一个 loopback HTTP 控制端点;本插件只是这个 webview 的**遥控器**——UI、工具、命令转发。`desktop/` 目录提供外壳侧完整代码。
 
@@ -45,7 +45,7 @@ browser_navigate("https://example.com")
 
 | 路径 | 说明 |
 |---|---|
-| `src/index.ts` | Host 半区:控制端口解析(RPC + 环境变量)+ 6 个 agent 工具 |
+| `src/index.ts` | Host 半区:控制端口解析(RPC + 环境变量)+ 12 个 agent 工具 |
 | `src/client/` | Client 半区:侧边栏按钮、悬浮面板、共享 store、页面控制器 |
 | `desktop/main.cjs` | Electron 主进程示例:窗口 + webviewTag + HTTP 控制端点 |
 | `desktop/preload.cjs` | preload:注入 `window.desktopBridge`(外壳标记 + 端口) |
@@ -103,13 +103,12 @@ Host 半区解析控制端口的优先级:
 
 ## 安全说明
 
-- 控制端点只监听 `127.0.0.1`,且只接受 `op` 白名单命令(`navigate/back/forward/reload/stop/eval`);`eval` 直接执行页面内 JS,因此这个端点**不要**暴露到非 loopback。
+- 控制端点只监听 `127.0.0.1`,且只接受 `op` 白名单命令(`navigate/back/forward/reload/stop/eval/content/screenshot/tab-*`);`eval` 直接执行页面内 JS,因此这个端点**不要**暴露到非 loopback。
 - `webview` 是隔离的 Chromium guest,不继承页面 Node 权限;`allowpopups` 按需保留(新窗口交给 webview 自己处理)。
-- 本插件只转发命令,不代理流量;cookie/登录态存在 webview 的默认 session 里。
+- 本插件只转发命令,不代理流量;cookie/登录态存在 webview 的持久 session(`partition="persist:dsh-browser"`)里;guest 使用去掉 Electron 标记的标准 Chrome UA,以通过常见的 bot 检测(如 Cloudflare)。
+- 截图由外壳主进程 `capturePage` 落盘到系统临时目录(`dsh-browser-screenshot-*.png`),路径经端点返回给 agent。
 
 ## 后续可扩展
 
-- 多标签页:`browser_tab_open` / `browser_tab_close`,webview 元素可增删。
-- 截图:`webview.capturePage()` 在 Client 侧转 dataURL,经同一端点回传,给 agent 加 `browser_screenshot`。
-- 会话隔离:`partition="persist:browser"` 让 webview 的登录态独立持久化。
+- 截图内联给模型:`browser_screenshot` 目前落盘返回路径;如果 harness 的 attachment 服务开放给插件,可改为直接返回 image ContentBlock。
 - DevTools:`webview.openDevTools()` 从 `window.__dshBrowser` 暴露。

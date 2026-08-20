@@ -26,9 +26,11 @@
  * @module dsh-builtin-browser/desktop/main
  */
 
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, webContents } = require('electron')
 const http = require('node:http')
+const os = require('node:os')
 const path = require('node:path')
+const fs = require('node:fs/promises')
 
 /** The harness web GUI this shell hosts. Override with DSH_WEB_URL. */
 const WEB_URL = process.env.DSH_WEB_URL || 'http://127.0.0.1:50593'
@@ -75,7 +77,8 @@ function createMainWindow() {
  * executes the actual webview operation and returns a JSON value, which is
  * relayed back verbatim.
  *
- * @param {string} op - command name (navigate, back, forward, reload, stop, eval).
+ * @param {string} op - command name (navigate, back, forward, reload, stop,
+ *   eval, content, screenshot, tab-list, tab-new, tab-close, tab-activate).
  * @param {Record<string, unknown>} payload - command arguments.
  * @returns {Promise<unknown>} the JSON value the page returned.
  */
@@ -97,6 +100,31 @@ async function forwardToPage(op, payload) {
     }
   })()`
   return win.webContents.executeJavaScript(script, true)
+}
+
+/**
+ * Capture the active browser tab. The page-side `screenshot` op returns the
+ * guest's webContents id; the capture itself must run here in the main
+ * process. The PNG is written to a temp file and the path is returned, so
+ * the agent can read it back with its own file tools (a base64 payload would
+ * be useless to a text model and huge in transit).
+ *
+ * @returns {Promise<unknown>} { ok, path, width, height } or an error value.
+ */
+async function captureActiveTab() {
+  const reply = await forwardToPage('screenshot', {})
+  if (!reply || reply.ok !== true || !reply.webContentsId) {
+    return reply && reply.ok === false
+      ? reply
+      : { ok: false, error: 'browser panel did not report a webContents id' }
+  }
+  const guest = webContents.fromId(reply.webContentsId)
+  if (!guest) return { ok: false, error: `no webContents with id ${reply.webContentsId}` }
+  const image = await guest.capturePage()
+  const size = image.getSize()
+  const file = path.join(os.tmpdir(), `dsh-browser-screenshot-${Date.now()}.png`)
+  await fs.writeFile(file, image.toPNG())
+  return { ok: true, path: file, width: size.width, height: size.height }
 }
 
 /**
@@ -128,7 +156,9 @@ function startBrowserEndpoint(windowProvider = getMainWindow) {
       if (key !== 'op') payload[key] = value
     }
     try {
-      const value = await forwardToPage(op, payload)
+      const value = op === 'screenshot'
+        ? await captureActiveTab()
+        : await forwardToPage(op, payload)
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(value))
     } catch (err) {
