@@ -38,15 +38,18 @@ export interface BrowserPanelState {
   inShell: boolean
   /** Whether element picking (the vendored Selector editor) is active. */
   picking: boolean
-  /** Transient error toast shown under the toolbar; auto-clears. */
-  toast: string | null
+  /** Transient toast shown under the toolbar; auto-clears. `ok` styles it. */
+  toast: { text: string; ok: boolean } | null
+  /** Command queued while the active tab's surface is unmounted (lazy in-session
+   * views); consumed by the view's first surface bind. */
+  pending: { op: string; url: string } | null
 }
 
 /** Blank page the surface loads until the user or agent navigates. */
 export const BLANK_PAGE = 'about:blank'
 
 /** The page-surface element (Electron webview or iframe) the panel owns. */
-interface PageSurfaceElement extends HTMLElement {
+export interface PageSurfaceElement extends HTMLElement {
   loadURL?(url: string): Promise<void>
   goBack?(): void
   goForward?(): void
@@ -80,6 +83,7 @@ let state: BrowserPanelState = {
   inShell: false,
   picking: false,
   toast: null,
+  pending: null,
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined
@@ -191,16 +195,31 @@ export const browserStore = {
     emit()
   },
   /** Show a transient toast under the toolbar; auto-clears after 4 s. */
-  showToast(toast: string): void {
+  showToast(toast: string, ok?: boolean): void {
     if (toastTimer !== undefined) clearTimeout(toastTimer)
     toastTimer = setTimeout(dismissToast, 4000)
-    if (state.toast === toast) return
-    state = { ...state, toast }
+    if (state.toast?.text === toast) return
+    state = { ...state, toast: { text: toast, ok: ok === true } }
     emit()
   },
   clearToast(): void {
     if (toastTimer !== undefined) clearTimeout(toastTimer)
     dismissToast()
+  },
+  /** Queue one command for the active tab while its surface is unmounted; the
+   * view that renders the surface consumes it on first bind. */
+  setPendingCommand(pending: { op: string; url: string } | null): void {
+    if (state.pending === pending) return
+    state = { ...state, pending }
+    emit()
+  },
+  /** Read-and-clear the queued command, if any. */
+  takePendingCommand(): { op: string; url: string } | null {
+    if (!state.pending) return null
+    const pending = state.pending
+    state = { ...state, pending: null }
+    emit()
+    return pending
   },
   /** Bind one tab's page-surface element (webview in the shell). */
   setSurface(tabId: number, el: PageSurfaceElement | null): void {
@@ -216,6 +235,23 @@ export const browserStore = {
 /** Cap on page text returned by the `content` op, so a huge page cannot
  * flood the agent's context. */
 const CONTENT_TEXT_LIMIT = 50_000
+
+/**
+ * Consumer-registered "open the browser" behavior, called by the controller
+ * whenever a command opens the browser (navigate). The floating panel shows
+ * itself through `setOpen(true)`; an in-session view (dsh-sidebar-live)
+ * registers a handler that switches its conversation view instead. This keeps
+ * one controller while letting each view decide what "open" means.
+ */
+let openHandler: (() => void) | null = null
+
+/**
+ * Set (or clear) the consumer's open behavior.
+ * @param handler - the view's open behavior, or null to clear.
+ */
+export function setOpenHandler(handler: (() => void) | null): void {
+  openHandler = handler
+}
 
 /**
  * The global controller the Desktop shell drives via executeJavaScript
@@ -256,25 +292,36 @@ export const pageBrowserController = {
         return { ok: true, id }
       }
     }
+    // Navigate works WITHOUT a mounted surface: it opens the browser
+    // (openHandler) and, when the active tab's surface is not mounted yet (a
+    // lazy in-session view renders it on its next mount), queues the command
+    // for the view to consume on first bind.
+    if (payload.op === 'navigate') {
+      const url = String(payload.url || '')
+      if (!url) return { ok: false, error: 'navigate requires a url' }
+      browserStore.setOpen(true)
+      if (openHandler) openHandler()
+      const surface = browserStore.getSurface()
+      if (!surface) {
+        browserStore.setPendingCommand({ op: 'navigate', url })
+        return { ok: true, url, title: '', pending: true }
+      }
+      if (surface.loadURL) {
+        try {
+          await surface.loadURL(url)
+        }
+        catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      }
+      else {
+        surface.setAttribute('src', url)
+      }
+      browserStore.setAddress(url)
+      return { ok: true, url, title: surface.getTitle?.() ?? '' }
+    }
     if (!el) return { ok: false, error: 'browser panel not mounted' }
     switch (payload.op) {
-      case 'navigate': {
-        const url = String(payload.url || '')
-        if (!url) return { ok: false, error: 'navigate requires a url' }
-        if (el.loadURL) {
-          try {
-            await el.loadURL(url)
-          }
-          catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) }
-          }
-        }
-        else {
-          el.setAttribute('src', url)
-        }
-        browserStore.setAddress(url)
-        return { ok: true, url, title: el.getTitle?.() ?? '' }
-      }
       case 'back':
         el.goBack?.()
         return { ok: true, url: el.getURL?.() ?? '', title: el.getTitle?.() ?? '' }

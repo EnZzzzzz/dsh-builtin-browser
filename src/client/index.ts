@@ -1,19 +1,20 @@
 /**
- * dsh-builtin-browser browser half: registers two additive slots that make up
- * the built-in browser UI:
+ * dsh-builtin-browser browser half: the built-in browser of a Desktop-wrapped
+ * DeepSeek Harness.
  *
- *  - `sidebar.footer.action` (id `builtin-browser`): a small action beside
- *    Settings that toggles the browser panel open/closed.
- *  - `shell.overlay` (id `builtin-browser`): the floating browser panel
- *    itself — one row of navigation buttons and tab pills (single-click the
- *    active pill to edit its address inline), plus the per-tab page surfaces
- *    (`<webview>` inside the Electron Desktop shell, `<iframe>` otherwise).
+ * This is the shared BROWSER CORE: one store + controller + pick flow that any
+ * view can render. This package ships its own floating full-screen panel
+ * (`shell.overlay`) and sidebar toggle (`sidebar.footer.action`), and also
+ * re-exports the core pieces (`browserStore`, `pageBrowserController`,
+ * `BLANK_PAGE`, `setOpenHandler`, and the pick-flow API) so another client
+ * bundle — dsh-sidebar-live renders its own in-session browser view — can
+ * drive the same engine without forking it. The views register the engine's
+ * "open" behavior through `setOpenHandler` when they need a different notion
+ * of "open the browser" than the floating panel's visibility flag.
  *
- * The two entries share one tiny external store (./store.ts) instead of a
- * context provider, because they render in different slots.
- *
- * Export discipline (packages/client/AGENTS.md): only `apply`/`inject` are
- * exported; the components and their props stay internal.
+ * Export discipline (packages/client/AGENTS.md): the public surface is
+ * `apply`/`inject` plus the explicitly re-exported core pieces below; the
+ * view components and their props stay internal.
  *
  * @module dsh-builtin-browser/client
  */
@@ -26,11 +27,18 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { BrowserPanel } from './BrowserPanel.js'
 import { BrowserToggle } from './BrowserToggle.js'
-import { mountPickFlow, setupPickFlow } from './pick-flow.js'
-import { browserStore, pageBrowserController } from './store.js'
+import { mountPickFlow, setupPickFlow, togglePicking, stopPicking } from './pick-flow.js'
+import { BLANK_PAGE, browserStore, pageBrowserController, setOpenHandler } from './store.js'
 
 /** Required services (cordis fiber inject): the slots registry. */
 export const inject = ['slots']
+
+// --- Shared browser core (re-exported for other views) -------------------
+// dsh-sidebar-live's in-session browser view drives this same engine via
+// `require('dsh-builtin-browser/client')`; it must stay view-agnostic.
+export { BLANK_PAGE, browserStore, pageBrowserController, setOpenHandler } from './store.js'
+export type { BrowserTab, BrowserPanelState, PageSurfaceElement } from './store.js'
+export { mountPickFlow, setupPickFlow, stopPicking, togglePicking } from './pick-flow.js'
 
 /** Window slot the shell's executeJavaScript targets. */
 const CONTROLLER_KEY = '__dshBrowser'

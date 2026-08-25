@@ -287,8 +287,15 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
     if (!wv) return
     if (!wv[SRC_FLAG]) {
       wv[SRC_FLAG] = true
-      const address = browserStore.get().tabs.find((t) => t.id === tabId)?.address
-      wv.setAttribute('src', address || BLANK_PAGE)
+      // A command may have been queued while this surface was unmounted (the
+      // panel opens via the shell controller / in-session views bind lazily);
+      // prefer it over the tab's recorded address.
+      const pending = browserStore.takePendingCommand()
+      let initial = ''
+      const tab = browserStore.get().tabs.find((t) => t.id === tabId)
+      if (pending && pending.op === 'navigate' && pending.url) initial = pending.url
+      else if (tab) initial = tab.address
+      wv.setAttribute('src', initial || BLANK_PAGE)
     }
     if (!inShell || wv[BOUND_FLAG]) return
     wv[BOUND_FLAG] = true
@@ -587,13 +594,13 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
           role="alert"
           style={{
             padding: '8px 12px',
-            background: 'rgba(220, 38, 38, 0.14)',
-            color: '#dc2626',
-            borderBottom: '1px solid rgba(220, 38, 38, 0.3)',
+            background: state.toast.ok ? 'rgba(34, 197, 94, 0.12)' : 'rgba(220, 38, 38, 0.14)',
+            color: state.toast.ok ? '#16a34a' : '#dc2626',
+            borderBottom: `1px solid ${state.toast.ok ? 'rgba(34, 197, 94, 0.3)' : 'rgba(220, 38, 38, 0.3)'}`,
             fontSize: 13,
           }}
         >
-          {state.toast}
+          {state.toast.text}
         </div>
       )}
       {state.tabs.map((tab) => {

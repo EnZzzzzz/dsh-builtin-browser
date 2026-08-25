@@ -1,8 +1,14 @@
 # dsh-builtin-browser
 
-给 Desktop 封装的 DeepSeek Harness 提供**内置浏览器**的双面插件:侧边栏一个"内置浏览器"按钮,点开一个多标签的真浏览器面板(单击当前标签即可输入网址);同时给 agent 提供 `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` / `browser_content` / `browser_screenshot` / `browser_tab_list` / `browser_tab_new` / `browser_tab_switch` / `browser_tab_close` 工具,模型可以直接驱动这个浏览器(导航、读页面内容、截图、多标签管理)。
+给 Desktop 封装的 DeepSeek Harness 提供**内置浏览器核心**的双面插件。它同时是:
+
+1. **共享浏览器引擎(core)**:一份 `browserStore`(多标签状态 + pending 命令)、一份页面控制器 `pageBrowserController`(挂载为 `window.__dshBrowser`,agent 的 `browser_*` 工具和桌面壳都通过它驱动浏览器)、一份标注流程(`setupPickFlow` / `togglePicking` / `stopPicking`,webview 与 iframe 双通道注入 vendored Selector 编辑器)。**任何视图都可以复用这份引擎**——本包自带的悬浮面板用它,`dsh-sidebar-live` 的会话区「内置浏览器」视图也通过 `ctx.modules.import('dsh-builtin-browser/client')` 取用同一份(store / 控制器 / BLANK_PAGE / setOpenHandler / 标注 API 均从 client 入口 re-export)。
+2. **一个独立的浏览器 UI**:侧边栏「内置浏览器」开关 + 全屏悬浮面板(`shell.overlay`),带标签页、地址内联编辑与标注按钮。
+3. **agent 遥控层**:注册 `browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` / `browser_content` / `browser_screenshot` / `browser_tab_list` / `browser_tab_new` / `browser_tab_switch` / `browser_tab_close` 工具,模型直接驱动浏览器(导航、读页面、截图、多标签)。
 
 真正的浏览器引擎不在 DSH 里,而在你的 Desktop 外壳(Electron)里:外壳用 `<webview>` 元素(完整 Chromium guest)承载页面,并跑一个 loopback HTTP 控制端点;本插件只是这个 webview 的**遥控器**——UI、工具、命令转发。`desktop/` 目录提供外壳侧完整代码。
+
+**与 dsh-sidebar-live 的关系**:该包不再 fork 引擎,只渲染会话区视图,并通过 `setOpenHandler(() => activateBrowserView())` 告诉核心「打开浏览器 = 切到它的视图」;它同时用同名空槽位条目压制本包的悬浮面板/侧边栏按钮(组合级二选一开关)。本包在无 sidebar 的组合里提供悬浮面板形态的浏览器。
 
 ## 架构
 
@@ -46,10 +52,21 @@ browser_navigate("https://example.com")
 | 路径 | 说明 |
 |---|---|
 | `src/index.ts` | Host 半区:控制端口解析(RPC + 环境变量)+ 12 个 agent 工具 |
-| `src/client/` | Client 半区:侧边栏按钮、悬浮面板、共享 store、页面控制器 |
+| `src/client/` | Client 半区:**浏览器核心**(store / 控制器 / 标注流程,从入口 re-export)+ 悬浮面板与侧边栏按钮 UI |
 | `desktop/main.cjs` | Electron 主进程示例:窗口 + webviewTag + HTTP 控制端点 |
 | `desktop/preload.cjs` | preload:注入 `window.desktopBridge`(外壳标记 + 端口) |
 | `cordis.patch.yml` | bundle 层插入行(安装后挂载本插件) |
+
+## 核心导出(client)
+
+`require('dsh-builtin-browser/client')`(或 `ctx.modules.import('dsh-builtin-browser/client')`)得到:
+
+- `browserStore` — 多标签状态:open / tabs / activeTabId / inShell / picking / toast / **pending 命令**(视图懒挂载时控制器排队的 navigate,首次 surface 绑定时消费);方法:addTab / closeTab / activateTab / setOpen / setAddress / setCurrent / setTitle / setSurface / getSurface / setPendingCommand / takePendingCommand / setPicking / showToast / subscribe。
+- `pageBrowserController` — `window.__dshBrowser` 的实现;`navigate` 在没有 surface 时经 openHandler + pending 打开浏览器视图并排队命令,其余 op(back/forward/reload/stop/eval/content/screenshot/tab-*)需要已挂载的 surface。
+- `setOpenHandler(fn)` — 消费者注册「打开浏览器」行为(悬浮面板靠 `setOpen`,会话区视图切视图)。
+- `BLANK_PAGE`、`setupPickFlow` / `mountPickFlow` / `togglePicking` / `stopPicking` — 标注流程(webview 与 iframe 双通道)。
+
+> 注意:client 条目的 boot 是并行导入。其它包要复用核心请用**异步** `ctx.modules.import(...)`(会先到达 graph row),不要在 factory 顶层同步 `require`——那会与核心的注册竞态、导致整个 boot 失败。
 
 ## 集成步骤
 
