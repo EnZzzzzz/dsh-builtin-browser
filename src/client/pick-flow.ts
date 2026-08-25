@@ -37,13 +37,25 @@ export function setupPickFlow(handle: { sendPrompt: SendPrompt }): void {
   sendPrompt = handle.sendPrompt
 }
 
+/** Previous `open` value, for closed-while-picking edge detection. */
+let wasOpen = browserStore.get().open
+
 /** Subscribe once to keep picking in sync with the browser's open state. */
 export function mountPickFlow(): void {
   if (unsubscribe) return
   unsubscribe = browserStore.subscribe(() => {
-    if (!browserStore.get().open && browserStore.get().picking) {
+    const open = browserStore.get().open
+    // Stop picking only when the browser was actually CLOSED while picking
+    // was armed (a true→false transition of `open`), not merely because
+    // `open` is false. `open` tracks the floating panel's visibility; an
+    // in-session view (dsh-sidebar-live) stays visible with `open === false`
+    // and even calls setOpen(false) after a successful 标注 send — a plain
+    // `!open && picking` check would kill every subsequent pick the moment
+    // it starts, making the ⌖ button appear dead after the first use.
+    if (wasOpen && !open && browserStore.get().picking) {
       void stopPicking()
     }
+    wasOpen = open
   })
 }
 
