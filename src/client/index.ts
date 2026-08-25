@@ -5,8 +5,8 @@
  *  - `sidebar.footer.action` (id `builtin-browser`): a small action beside
  *    Settings that toggles the browser panel open/closed.
  *  - `shell.overlay` (id `builtin-browser`): the floating browser panel
- *    itself — one row of navigation buttons and tab pills (double-click a
- *    pill to edit its address inline), plus the per-tab page surfaces
+ *    itself — one row of navigation buttons and tab pills (single-click the
+ *    active pill to edit its address inline), plus the per-tab page surfaces
  *    (`<webview>` inside the Electron Desktop shell, `<iframe>` otherwise).
  *
  * The two entries share one tiny external store (./store.ts) instead of a

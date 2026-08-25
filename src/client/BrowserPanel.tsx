@@ -2,7 +2,8 @@
  * The browser panel itself, rendered into the `shell.overlay` slot: a floating
  * frame-wide surface with one combined row — navigation buttons, the tab
  * pills, and panel actions — plus the actual page surfaces. There is no
- * standalone address bar: double-click a tab pill to edit its address inline.
+ * standalone address bar: single-click the active tab pill to edit its
+ * address inline (click an inactive pill to switch; click it again to edit).
  *
  * Multi-tab: every tab keeps its own page surface mounted (inactive ones are
  * display:none), so each tab preserves its session and history. The toolbar,
@@ -69,9 +70,21 @@ const TOOLBAR_CSS = `
 }
 /* New-tab entrance: the pill grows from zero width to its natural width
    (only the from-frame is keyed, so it lands on whatever the computed width
-   is — 132px normally, 260px when it opens straight into editing). */
+   is — 132px normally, 260px when it opens straight into editing). Fast-in
+   slow-out curve: the pill pops in quickly, then settles gently to rest. */
 @keyframes dsh-browser-tab-in {
   from {
+    min-width: 0;
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    opacity: 0;
+  }
+}
+/* Tab close: shrink and fade out on a slow-out curve, then the element is
+   removed from the strip by the panel's animation-end handler. */
+@keyframes dsh-browser-tab-out {
+  to {
     min-width: 0;
     max-width: 0;
     padding-left: 0;
@@ -90,7 +103,7 @@ const TOOLBAR_CSS = `
   min-width: 88px;
   max-width: 132px;
   overflow: hidden;
-  animation: dsh-browser-tab-in 240ms ease-in-out;
+  animation: dsh-browser-tab-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
   padding: 3px 6px 3px 10px;
   border: 1px solid rgba(127, 127, 127, 0.3);
   border-radius: 9px;
@@ -100,8 +113,12 @@ const TOOLBAR_CSS = `
   color: inherit;
   font-size: 12.5px;
   transition: background-color 120ms ease, box-shadow 120ms ease, border-color 120ms ease,
-    max-width 240ms ease-in-out;
+    max-width 220ms cubic-bezier(0.22, 1, 0.36, 1);
   user-select: none;
+}
+.dsh-browser-tab.closing {
+  animation: dsh-browser-tab-out 260ms cubic-bezier(0.33, 1, 0.68, 1);
+  pointer-events: none;
 }
 .dsh-browser-tab:hover {
   background: rgba(77, 107, 254, 0.06);
@@ -219,6 +236,9 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
   const active = state.tabs.find((t) => t.id === state.activeTabId) ?? state.tabs[0]
   // Inline address editing: which tab pill is being edited, and its draft.
   const [editing, setEditing] = useState<{ id: number; value: string } | null>(null)
+  // Close-out animation: a closing pill stays mounted (fading/shrinking out)
+  // until its animation ends, so the strip records which ids are mid-close.
+  const [closingIds, setClosingIds] = useState<number[]>([])
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -332,12 +352,28 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
   }, [])
 
   // Commit an inline tab-address edit: activate that tab, then navigate it.
+  // Re-committing the URL the tab is already on does not reload the page —
+  // with single-click editing a stray click + blur must be harmless.
   const commitEdit = useCallback((tabId: number, value: string): void => {
     setEditing(null)
-    if (!value.trim()) return
+    const trimmed = value.trim()
+    if (!trimmed) return
     browserStore.activateTab(tabId)
+    const tab = browserStore.get().tabs.find((t) => t.id === tabId)
+    if (tab && toUrl(value) === tab.current) return
     navigate(value)
   }, [navigate])
+
+  /** Start the close-out animation for one tab; removal waits for its end. */
+  const requestCloseTab = useCallback((tabId: number): void => {
+    setClosingIds((cur) => (cur.includes(tabId) ? cur : [...cur, tabId]))
+  }, [])
+
+  /** Remove a tab whose close-out animation has finished. */
+  const finishCloseTab = useCallback((tabId: number): void => {
+    setClosingIds((cur) => cur.filter((id) => id !== tabId))
+    browserStore.closeTab(tabId)
+  }, [])
 
   const goBack = useCallback((): void => {
     browserStore.getSurface()?.goBack?.()
@@ -445,15 +481,27 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
                 role="tab"
                 aria-selected={tab.id === active.id}
                 tabIndex={0}
-                className={`dsh-browser-tab${tab.id === active.id ? ' active' : ''}${isEditing ? ' editing' : ''}`}
-                title={isEditing ? undefined : (tab.current || '新标签页，双击编辑地址')}
-                onClick={() => browserStore.activateTab(tab.id)}
-                onDoubleClick={() => {
-                  browserStore.activateTab(tab.id)
-                  setEditing({ id: tab.id, value: tab.address || tab.current || '' })
+                className={`dsh-browser-tab${tab.id === active.id ? ' active' : ''}${isEditing ? ' editing' : ''}${closingIds.includes(tab.id) ? ' closing' : ''}`}
+                title={isEditing ? undefined : (tab.current || '新标签页，单击编辑地址')}
+                onClick={() => {
+                  // Single click: the active pill enters inline URL editing;
+                  // an inactive pill just switches (click it again to edit).
+                  if (tab.id === active.id) {
+                    setEditing({ id: tab.id, value: tab.address || tab.current || '' })
+                  } else {
+                    browserStore.activateTab(tab.id)
+                  }
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') browserStore.activateTab(tab.id)
+                  if (e.key !== 'Enter' && e.key !== ' ') return
+                  if (tab.id === active.id) {
+                    setEditing({ id: tab.id, value: tab.address || tab.current || '' })
+                  } else {
+                    browserStore.activateTab(tab.id)
+                  }
+                }}
+                onAnimationEnd={(e) => {
+                  if (e.animationName === 'dsh-browser-tab-out') finishCloseTab(tab.id)
                 }}
               >
                 {isEditing ? (
@@ -464,7 +512,6 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
                     onChange={(e) => setEditing({ id: tab.id, value: e.target.value })}
                     onFocus={(e) => e.target.select()}
                     onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => {
                       e.stopPropagation()
                       if (e.key === 'Enter') commitEdit(tab.id, editing.value)
@@ -483,7 +530,7 @@ export function BrowserPanel(_props: BrowserPanelProps): ReactNode {
                   className="dsh-browser-btn"
                   onClick={(e) => {
                     e.stopPropagation()
-                    browserStore.closeTab(tab.id)
+                    requestCloseTab(tab.id)
                   }}
                   title="关闭标签页"
                   aria-label={`关闭标签页 ${tabLabel(tab)}`}
