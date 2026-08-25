@@ -152,16 +152,10 @@
     const box = document.createElement("div"); box.className = `${NS}-sel-box${HOST.isExtension ? ` ${NS}-pro-selection` : ""}`;
     const corners = [0,1,2,3].map(i => { const c = document.createElement("div"); c.className = `${NS}-sel-corner${HOST.isExtension ? ` ${NS}-pro-corner` : ""}`; c.style.animationDelay = `${i*28}ms`; document.body.appendChild(c); return c; });
     const label = document.createElement("div"); label.className = `${NS}-sel-label${HOST.isExtension ? ` ${NS}-pro-selection-label` : ""}`; label.textContent = elementLabel(el);
-    const annotateBtn = document.createElement("button");
-    annotateBtn.className = `${NS}-root ${NS}-annotate-btn${HOST.isExtension ? ` ${NS}-pro-annotate` : ""}`; annotateBtn.title = t("addInstruction");
-    annotateBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
-    annotateBtn.onclick = (e) => { e.stopPropagation(); e.preventDefault(); showAnnotationPopover(el, annotateBtn); };
-    const markdownBtn = document.createElement("button");
-    markdownBtn.className = `${NS}-root ${NS}-annotate-btn ${NS}-markdown-btn${HOST.isExtension ? ` ${NS}-pro-annotate` : ""}`; markdownBtn.title = t("copyMarkdown");
-    markdownBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>';
-    markdownBtn.onclick = (e) => { e.stopPropagation(); e.preventDefault(); copyAsMarkdown([el]); };
-    document.body.appendChild(box); document.body.appendChild(label); document.body.appendChild(annotateBtn); document.body.appendChild(markdownBtn);
-    selOverlays.set(aiId, { box, corners, label, annotateBtn, markdownBtn }); positionSelOverlay(el);
+    // dsh: no per-element pencil/markdown buttons — click-selection opens the
+    // annotation popover directly, so the floating buttons are redundant.
+    document.body.appendChild(box); document.body.appendChild(label);
+    selOverlays.set(aiId, { box, corners, label }); positionSelOverlay(el);
   }
   function positionSelOverlay(el) {
     const aiId = el.getAttribute(AI_ID), ov = selOverlays.get(aiId); if (!ov) return;
@@ -171,12 +165,9 @@
     for (let i=0;i<4;i++) { ov.corners[i].style.top=pos[i].top+"px"; ov.corners[i].style.left=pos[i].left+"px"; }
     const toolbarTop = r.top-pad-20;
     ov.label.style.top=toolbarTop+"px"; ov.label.style.left=(r.left-pad)+"px";
-    ov.markdownBtn.style.top=toolbarTop+"px"; ov.markdownBtn.style.left=(r.right+pad-20)+"px";
-    ov.annotateBtn.style.top=toolbarTop+"px"; ov.annotateBtn.style.left=(r.right+pad-44)+"px";
-    ov.annotateBtn.classList.toggle(`${NS}-has-note`, annotations.has(aiId));
   }
   function positionAllOverlays() { for (const el of selectedElements) positionSelOverlay(el); }
-  function destroySelOverlay(aiId) { const ov=selOverlays.get(aiId); if(!ov)return; ov.box.remove(); ov.corners.forEach(c=>c.remove()); ov.label.remove(); ov.annotateBtn.remove(); ov.markdownBtn.remove(); selOverlays.delete(aiId); }
+  function destroySelOverlay(aiId) { const ov=selOverlays.get(aiId); if(!ov)return; ov.box.remove(); ov.corners.forEach(c=>c.remove()); ov.label.remove(); selOverlays.delete(aiId); }
   function destroyAllOverlays() { for (const [aiId] of selOverlays) destroySelOverlay(aiId); }
   function addSelection(el) {
     if (!el || selectedElements.includes(el)) return;

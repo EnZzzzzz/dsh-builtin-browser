@@ -53,8 +53,9 @@ small — that is the whole point of the minimal-patch rule.
 
    DeepSeek-blue theme (`#4D6BFE`) for hover/selection overlays, buttons and
    feedback states; click-select auto-opens a large annotation editor (title +
-   selector + multi-line input + cancel/add); chat-panel tags show the element
-   label with its annotation on a second gray line; DICT gained the
-   `cancel`/`add` entries.
+   selector + multi-line input + cancel/add); the per-element floating pencil /
+   copy-markdown buttons are removed (the popover opens on click-selection, so
+   they were redundant); chat-panel tags show the element label with its
+   annotation on a second gray line; DICT gained the `cancel`/`add` entries.
 
 Everything else in the vendored files is byte-for-byte upstream.

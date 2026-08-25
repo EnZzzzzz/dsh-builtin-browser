@@ -1,7 +1,7 @@
   // ── Annotation popover ──────────────────────────────────────
   // Large editor: element title + selector + multi-line input + cancel/add.
-  // Opened automatically after a click-selection; the small pencil button
-  // reopens it for an already-annotated element.
+  // Opened automatically after a click-selection; clicking an already
+  // annotated element reopens it with the saved note.
   function showAnnotationPopover(el, anchor) {
     removeAnnotationPopover(); const aiId = el.getAttribute(AI_ID);
     const popover = document.createElement("div"); popover.className = `${NS}-root ${NS}-annotate-popover`;
@@ -26,7 +26,7 @@
     actions.appendChild(cancelBtn); actions.appendChild(doneBtn);
     popover.appendChild(title); popover.appendChild(selRow); popover.appendChild(textarea); popover.appendChild(actions);
     document.body.appendChild(popover); activePopover = popover;
-    // Position below the anchor (pencil button) or the element itself,
+    // Position below the anchor (if any) or the element itself,
     // flipping above when there is not enough room.
     const r = (anchor || el).getBoundingClientRect();
     const pw = popover.offsetWidth, ph = popover.offsetHeight;
