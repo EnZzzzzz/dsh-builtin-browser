@@ -118,7 +118,11 @@ export async function stopPicking(): Promise<void> {
 
 async function startPicking(): Promise<void> {
   const surface = browserStore.getSurface()
-  if (!surface) return
+  if (!surface) {
+    // Never fail silently: a toolbar click must always answer.
+    browserStore.showToast('浏览器页面尚未就绪，请稍后再试')
+    return
+  }
   try {
     await runInGuest(surface, buildInjectionCode(browserStore.get().activeTabId), true)
   } catch (err) {
