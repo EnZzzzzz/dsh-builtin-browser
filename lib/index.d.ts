@@ -34,6 +34,15 @@ export interface Config {
      * forward `DSH_DESKTOP_BROWSER_PORT`.
      */
     controlPort?: number;
+    /**
+     * Agent presets whose agents must NOT see the `browser_*` tools. The tools
+     * stay registered globally, so every preset not listed here keeps them;
+     * only agents composed from a preset listed here get them masked away at
+     * creation (and un-masked again if the session switches to another preset
+     * while still blank). Defaults to `['minimal']`, whose fixed two-tool
+     * composition must not grow a browser.
+     */
+    hideForPresets?: string[];
 }
 /**
  * Mount the built-in browser plugin.

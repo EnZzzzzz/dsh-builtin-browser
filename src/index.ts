@@ -25,6 +25,11 @@ import type { Context } from '@deepseek-ai/cordis'
 // Type-only: brings the `Context.connection` merge (HostConnectionHandle) into
 // this program so the deferred inject callback is fully typed.
 import type {} from '@deepseek-ai/dsh-client-connection'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+// Type-only: brings the `'agent-preset/selected'` cordis event declaration
+// into this program so the mask can follow a blank-session preset switch.
+import type {} from '@deepseek-ai/dsh-agent-presets/types'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
 
@@ -43,7 +48,35 @@ export interface Config {
    * forward `DSH_DESKTOP_BROWSER_PORT`.
    */
   controlPort?: number
+  /**
+   * Agent presets whose agents must NOT see the `browser_*` tools. The tools
+   * stay registered globally, so every preset not listed here keeps them;
+   * only agents composed from a preset listed here get them masked away at
+   * creation (and un-masked again if the session switches to another preset
+   * while still blank). Defaults to `['minimal']`, whose fixed two-tool
+   * composition must not grow a browser.
+   */
+  hideForPresets?: string[]
 }
+
+/**
+ * The twelve model-facing tool names this plugin registers. Kept in one place
+ * so the per-preset visibility mask and the registration list cannot drift.
+ */
+const BROWSER_TOOL_NAMES = [
+  'browser_navigate',
+  'browser_back',
+  'browser_forward',
+  'browser_reload',
+  'browser_stop',
+  'browser_eval',
+  'browser_content',
+  'browser_screenshot',
+  'browser_tab_list',
+  'browser_tab_new',
+  'browser_tab_switch',
+  'browser_tab_close',
+] as const
 
 /** The loopback control endpoint the Desktop shell runs (desktop/main.js). */
 interface BrowserEndpoint {
@@ -317,6 +350,56 @@ export function apply(ctx: Context, config: Config = {}): void {
       tabIdTool('browser_tab_close', 'Close one tab of the built-in browser. Closing the last tab leaves a fresh blank tab.', 'tab-close'),
     ].map((t) => toolsCtx.tools.register(t))
     return () => disposers.forEach((dispose) => dispose())
+  })
+
+  // --- Per-preset visibility: keep the browser_* tools for every preset
+  // except the ones `hideForPresets` names (极简模式 by default). The tools
+  // are registered globally above, so here we mask them from the excluded
+  // presets' agents. A preset may be chosen while the session is still blank
+  // (agentPresets.recompose rebinds the same agent), so the mask is
+  // RECONCILED on both creation and preset selection, and lifted when the
+  // agent leaves or the preset leaves the hide list.
+  const hideForPresets = new Set(config.hideForPresets ?? ['minimal'])
+  const maskDisposers = new Map<string, () => void>()
+
+  const reconcileMask = (agent: Agent): void => {
+    const agentCtx = agent.ctx
+    const presets = agentCtx.get('agentPresets')
+    const presetId = presets?.composedPreset(agentCtx)
+    const current = maskDisposers.get(agent.id)
+    if (presetId !== undefined && hideForPresets.has(presetId)) {
+      if (current !== undefined) return // already masked for this agent
+      const tools = agentCtx.get('tools')
+      if (tools === undefined) return
+      try {
+        const dispose = tools.restrict({ deny: [...BROWSER_TOOL_NAMES] })
+        maskDisposers.set(agent.id, dispose)
+        ctx.logger.info(`[builtin-browser] browser_* tools hidden for agent "${agent.id}" (preset "${presetId}")`)
+      }
+      catch (error) {
+        ctx.logger.warn(`[builtin-browser] could not hide browser_* tools for agent "${agent.id}": ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    else if (current !== undefined) {
+      current()
+      maskDisposers.delete(agent.id)
+      ctx.logger.info(`[builtin-browser] browser_* tools restored for agent "${agent.id}" (preset "${presetId ?? '(none)'}")`)
+    }
+  }
+
+  ctx.on('agent/created', ({ agent }: { agent: Agent }) => reconcileMask(agent))
+  ctx.on('agent/disposed', ({ agent }: { agent: Agent }) => {
+    const dispose = maskDisposers.get(agent.id)
+    if (dispose !== undefined) {
+      dispose()
+      maskDisposers.delete(agent.id)
+    }
+  })
+  ctx.on('agent-preset/selected', (sessionId: SessionId, agentPreset: string) => {
+    // recompose has already rebound the agent's scope parent by the time the
+    // selection is committed, so composedPreset already reports the new id.
+    const agent = ctx.get('agents')?.get(sessionId)
+    if (agent !== undefined) reconcileMask(agent)
   })
 
   ctx.logger.info('[builtin-browser] mounted: browser_navigate / browser_back / browser_forward / browser_reload / browser_stop / browser_eval / browser_content / browser_screenshot / browser_tab_list / browser_tab_new / browser_tab_switch / browser_tab_close')

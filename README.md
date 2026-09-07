@@ -104,6 +104,13 @@ dsh plugin --profile web add /path/to/dsh-builtin-browser
 
 重启后,侧边栏底部出现「🌐 内置浏览器」;agent 自动获得 `browser_*` 工具。
 
+> 按预设可见性:`browser_*` 工具默认对所有 agent 全局可见,但 `hideForPresets`
+> 配置(默认 `['minimal']`,即极简模式)会把这些工具从对应预设的 agent 目录里
+> 屏蔽掉——极简模式保持「只有持久 shell + str_replace_editor」的双工具形态,
+> 其余模式(标准、PTC、设计等)照常拥有浏览器工具。屏蔽在 agent 创建时按当前
+> 预设施加,并会跟随空白会话的模式切换;在 bundle 层或 profile
+> `cordis.patch.yml` 里改 `builtin-browser` 行的 `hideForPresets` 即可调整。
+
 ### 3. 验证
 
 - 手动:点按钮 → 面板出现 → 单击当前标签(或点 + 新建)输入 `https://example.com` 回车。

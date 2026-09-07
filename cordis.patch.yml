@@ -7,8 +7,15 @@
 # (Electron), so this row does nothing useful outside such a shell. The shell
 # must also run the companion HTTP control endpoint (desktop/main.js) and set
 # DSH_DESKTOP_BROWSER_PORT so the host half can reach it.
+#
+# The `browser_*` tools register globally, so every agent preset gets them
+# EXCEPT the ones listed in `hideForPresets` (default: `minimal` — 极简模式 is a
+# fixed two-tool composition). Override `hideForPresets` here to change which
+# presets keep the browser tools; the mask is applied per agent at creation and
+# follows blank-session preset switches.
 - insert:
     - id: builtin-browser
       name: dsh-builtin-browser
       config:
         enabled: true
+        hideForPresets: ['minimal']
