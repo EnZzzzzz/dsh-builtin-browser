@@ -49,11 +49,12 @@ export interface SidebarRightTarget {
 /** The Client half's context; the shipped Client packages spell it `ClientContext`. */
 export type ClientContext = Context
 
-/** What this package contributes to a tab body beyond the standard seats. */
-export interface BrowserTabInjected {
-  /** Open one more browser tab in the active docked pane. */
-  readonly openAnotherTab: () => void
-}
+/**
+ * What this package contributes to a browser body beyond the standard seats.
+ * Empty on purpose: page tabs live inside the browser and are managed by its own
+ * tab strip, so the seat injects nothing extra.
+ */
+export interface BrowserTabInjected {}
 
 // The body's injected face is an extension point: declare ours so the slot
 // framework types `props.openAnotherTab` on `sidebar.right.pane.tab`.

@@ -23,7 +23,7 @@ const STYLE_ID = '__dsh_selector_style'
 export const OUTBOX_KEY = '__dshSelectorOutbox'
 
 /** Seed the host seam the editor's core.js reads before it initializes. */
-function hostSeed(tabKey: string | undefined): string {
+function hostSeed(tabKey: string | number | undefined): string {
   return `window.__SELECTOR_HOST__ = { initialLang: 'zh', tabId: ${tabKey === undefined ? 'null' : JSON.stringify(tabKey)}, sendPrompt: function (text) { window.${OUTBOX_KEY} = text; } };`
 }
 
@@ -43,7 +43,7 @@ const CSS_INJECT = `(function () {
  * soft resume, so double-clicking the ⌖ button never stacks instances.
  * @param tabKey - the sidebar tab's content key, reported in the annotation.
  */
-export function buildInjectionCode(tabKey?: string): string {
+export function buildInjectionCode(tabKey?: string | number): string {
   return `${hostSeed(tabKey)}\n${CSS_INJECT}\n${editorBundle}`
 }
 

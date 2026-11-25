@@ -33,7 +33,7 @@ import { BROWSER_KIND, browserDefinition, NEW_TAB_COMMAND } from './definition.j
 import type { BrowserTabInjected, SidebarRightTarget } from './env.js'
 import { LOCALES, NS } from './locales.js'
 import { setupPickFlow } from './pick-flow.js'
-import { clearActiveBrowserPage, pageBrowserController } from './store.js'
+import { clearActiveBrowserStore, pageBrowserController, setBrowserOpenHandler } from './store.js'
 
 /** Required services (cordis fiber inject): slots, the right Sidebar, and copy. */
 export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'locale']
@@ -130,16 +130,24 @@ export function apply(ctx: ClientContext): void {
   win[CONTROLLER_KEY] = pageBrowserController
   ctx.effect(() => () => {
     if (win[CONTROLLER_KEY] === pageBrowserController) delete win[CONTROLLER_KEY]
-    clearActiveBrowserPage()
+    clearActiveBrowserStore()
   }, 'builtin-browser: controller')
+
+  // Let a command with no browser on screen surface one, so an agent's first
+  // navigate/tab-new does not fail just because the sidebar was closed.
+  ctx.effect(() => {
+    setBrowserOpenHandler(() => ctx.sidebarRight.openTab(BROWSER_KIND))
+    return () => setBrowserOpenHandler(null)
+  }, 'builtin-browser: open handler')
 
   // Stage one: the tab TYPE and its guide capsule.
   ctx.effect(() => ctx.sidebarRightTabs.register(browserDefinition(t)), 'builtin-browser: type')
 
-  // The face every browser tab body receives: one more tab beside this one.
-  const injected: BrowserTabInjected = {
-    openAnotherTab: () => ctx.sidebarRight.openTab(BROWSER_KIND),
-  }
+  // Tabs live INSIDE the browser, so the body needs no plugin-injected face:
+  // the tab strip owns new/close/switch, and a link that would open a window
+  // becomes one more internal tab. `browser.new` still opens ANOTHER BROWSER
+  // (one more sidebar tab), which is a different thing from a page tab.
+  const injected: BrowserTabInjected = {}
 
   // Stage two: the body, keyed by this implementation's id. The seat supplies
   // the standard props (`useTabInfo`, `sessionId`) and, through `locale`, the

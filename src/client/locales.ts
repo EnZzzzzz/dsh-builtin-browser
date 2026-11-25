@@ -24,6 +24,9 @@ export type BuiltinBrowserKey =
   | 'nav.reload'
   | 'nav.stop'
   | 'tab.new'
+  | 'tab.close'
+  | 'tab.blank'
+  | 'tab.edit'
   | 'picking.on'
   | 'picking.off'
   | 'pick.sent'
@@ -51,7 +54,10 @@ const zh: Record<BuiltinBrowserKey, string> = {
   'nav.forward': '前进',
   'nav.reload': '刷新',
   'nav.stop': '停止',
-  'tab.new': '新建浏览器标签',
+  'tab.new': '新建标签页',
+  'tab.close': '关闭标签页',
+  'tab.blank': '新标签页',
+  'tab.edit': '编辑标签页地址',
   'picking.on': '退出元素拾取',
   'picking.off': '拾取元素发给助手',
   'pick.sent': '标注已发送给助手',
@@ -73,7 +79,10 @@ const en: Record<BuiltinBrowserKey, string> = {
   'nav.forward': 'Forward',
   'nav.reload': 'Reload',
   'nav.stop': 'Stop',
-  'tab.new': 'New browser tab',
+  'tab.new': 'New tab',
+  'tab.close': 'Close tab',
+  'tab.blank': 'New tab',
+  'tab.edit': 'Edit tab address',
   'picking.on': 'Stop picking elements',
   'picking.off': 'Pick an element for the agent',
   'pick.sent': 'Annotation sent to the agent',

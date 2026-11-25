@@ -19,7 +19,7 @@
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { buildInjectionCode, buildPollExpression, DESTROY_EXPRESSION, OUTBOX_KEY } from './picker-script.js'
-import type { BrowserPageStore, PageSurfaceElement } from './store.js'
+import type { BrowserStore, PageSurfaceElement } from './store.js'
 
 /** Lazily-resolved send callback: queues a prompt into one Session. */
 export type SendPrompt = (sessionId: SessionId, text: string) => Promise<void>
@@ -36,7 +36,11 @@ const POLL_INTERVAL_MS = 500
 let sendPrompt: SendPrompt | undefined
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let sending = false
-let polling: BrowserPageStore | null = null
+let polling: BrowserStore | null = null
+/** The internal tab picking was armed on, so teardown targets THAT page even
+ * after the user switched tabs (picking is disarmed on switch, but the injected
+ * editor still lives in the guest until we remove it). */
+let pollingTabId: number | null = null
 
 /** Wire the send callback (called once from ./index.ts at apply). */
 export function setupPickFlow(handle: { sendPrompt: SendPrompt }): void {
@@ -84,10 +88,12 @@ function pollFrame(surface: PageSurfaceElement): { text: string | null; present:
 /** Tear the editor down and leave picking mode (silent, no toast). */
 export async function stopPicking(): Promise<void> {
   stopPoll()
-  const page = polling
+  const store = polling
+  const tabId = pollingTabId
   polling = null
-  if (page !== null) page.setPicking(false)
-  const surface = page?.getSurface() ?? null
+  pollingTabId = null
+  if (store !== null) store.setPicking(false)
+  const surface = store === null || tabId === null ? null : store.surfaceOf(tabId)
   if (surface === null) return
   try {
     if (surface.executeJavaScript) {
@@ -109,56 +115,56 @@ export async function stopPicking(): Promise<void> {
 }
 
 /**
- * The ⌖ button handler of one tab: arm picking in that tab, or disarm it.
- * @param options - the tab's store, its Session, its content key, and copy.
+ * The ⌖ button handler: arm picking on the browser's active internal tab, or
+ * disarm it.
+ * @param options - the browser store, its Session, the active internal tab, and copy.
  */
 export function togglePicking(options: {
-  page: BrowserPageStore
+  store: BrowserStore
   sessionId: SessionId
-  contentKey: string
+  tabId: number
   copy: PickFlowCopy
 }): void {
-  const { page, sessionId, contentKey, copy } = options
-  if (page.getSnapshot().picking) {
+  const { store, sessionId, tabId, copy } = options
+  if (store.getSnapshot().picking) {
     void stopPicking()
     return
   }
-  const surface = page.getSurface()
+  const surface = store.surfaceOf(tabId)
   if (surface === null) {
     // Never fail silently: a toolbar click must always answer.
-    page.showToast(copy.pickNotReady())
+    store.showToast(copy.pickNotReady())
     return
   }
-  void startPicking({ page, sessionId, contentKey, copy, surface })
+  void startPicking({ store, sessionId, tabId, copy, surface })
 }
 
-async function startPicking(context: {
-  page: BrowserPageStore
-  sessionId: SessionId
-  contentKey: string
-  copy: PickFlowCopy
-  surface: PageSurfaceElement
-}): Promise<void> {
-  const { page, contentKey, copy, surface } = context
+async function startPicking(context: PickContext & { surface: PageSurfaceElement }): Promise<void> {
+  const { store, tabId, copy, surface } = context
   try {
-    await runInGuest(surface, buildInjectionCode(contentKey), true)
+    await runInGuest(surface, buildInjectionCode(tabId), true)
   }
   catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     // `runInGuest` reports a blocked cross-origin frame with this sentinel.
-    page.showToast(message === 'cross-origin' ? copy.pickCrossOrigin() : message)
+    store.showToast(message === 'cross-origin' ? copy.pickCrossOrigin() : message)
     return
   }
-  polling = page
-  page.setPicking(true)
+  polling = store
+  pollingTabId = tabId
+  store.setPicking(true)
   startPoll(context)
 }
 
-function startPoll(context: {
-  page: BrowserPageStore
+/** What one picking session needs: the browser, its Session, its tab, and copy. */
+interface PickContext {
+  store: BrowserStore
   sessionId: SessionId
+  tabId: number
   copy: PickFlowCopy
-}): void {
+}
+
+function startPoll(context: PickContext): void {
   if (pollTimer !== null) return
   pollTimer = setInterval(() => {
     void pollTick(context)
@@ -171,11 +177,12 @@ function stopPoll(): void {
   pollTimer = null
 }
 
-async function pollTick(context: { page: BrowserPageStore; sessionId: SessionId; copy: PickFlowCopy }): Promise<void> {
-  const { page, sessionId, copy } = context
-  if (sending || !page.getSnapshot().picking) return
-  const surface = page.getSurface()
-  if (surface === null || polling !== page) {
+async function pollTick(context: PickContext): Promise<void> {
+  const { store, tabId } = context
+  if (sending || !store.getSnapshot().picking) return
+  const surface = store.surfaceOf(tabId)
+  // The tab must still be the browser's active one: switching away ends picking.
+  if (surface === null || polling !== store || store.getSnapshot().activeTabId !== tabId) {
     void stopPicking()
     return
   }
@@ -208,11 +215,8 @@ async function pollTick(context: { page: BrowserPageStore; sessionId: SessionId;
   }
 }
 
-async function handleOutbox(
-  context: { page: BrowserPageStore; sessionId: SessionId; copy: PickFlowCopy },
-  text: string,
-): Promise<void> {
-  const { page, sessionId, copy } = context
+async function handleOutbox(context: PickContext, text: string): Promise<void> {
+  const { store, sessionId, copy } = context
   sending = true
   try {
     if (sendPrompt === undefined) throw new Error('picker send unavailable')
@@ -220,11 +224,11 @@ async function handleOutbox(
     // Success: tear the editor down and confirm in the toolbar. The sidebar tab
     // stays where it is, so the user watches the message land beside the page.
     await stopPicking()
-    page.showToast(copy.pickSent(), true)
+    store.showToast(copy.pickSent(), true)
   }
   catch (err) {
     // Failure (no active session / RPC error): keep the editor, show the toast.
-    page.showToast(err instanceof Error ? err.message : String(err))
+    store.showToast(err instanceof Error ? err.message : String(err))
   }
   finally {
     sending = false

@@ -4,13 +4,14 @@
 
 ## 它做了什么
 
-1. **右侧边栏的原生浏览器标签页**。通过官方两段式注册进场:
+1. **右侧边栏的原生浏览器，自带内部标签条**。点网页里的链接（`target="_blank"`）、弹窗或工具栏 `+`,都在**同一个浏览器内部**开新标签页,不会弹出系统窗口,也不会为每个网页占一个侧栏位置。按 `keepMounted` 语义,每个内部标签的 surface 常驻,切换时保留滚动位置、表单和前进/后退历史。
+2. **右侧边栏的原生浏览器标签页**。通过官方两段式注册进场:
    - 第一段 `ctx.sidebarRightTabs.register(...)` 声明这个 tab 类型(id / kind / 多实例 / 常驻挂载 / 侧边栏 guide 卡片);
    - 第二段在 `sidebar.right.pane.tab` 与 `sidebar.right.pane.tab.title` 两个官方座位注册正文与标题,**键为 `dsh-builtin-browser`**。
 
    也就是说:标签条、停靠、分屏、浮动、关闭、右键菜单全部由官方右侧栏负责,本插件**只画一页内容**(导航工具栏 + 网页 surface + 通知条)。入口在侧边栏 guide 页的「内置浏览器」卡片、`browser.new` 快捷键(`⌘⇧T`),或代码里的 `ctx.sidebarRight.openTab('builtin-browser')`。
-2. **12 个 agent 工具**:`browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` / `browser_content` / `browser_screenshot` / `browser_tab_list` / `browser_tab_new` / `browser_tab_switch` / `browser_tab_close`。
-3. **标注拾取**:工具栏的 ⌖ 把 vendored Selector 编辑器注入当前页面,标注结果直接排进该标签页所属会话。
+3. **12 个 agent 工具**:`browser_navigate` / `browser_back` / `browser_forward` / `browser_reload` / `browser_stop` / `browser_eval` / `browser_content` / `browser_screenshot` / `browser_tab_list` / `browser_tab_new` / `browser_tab_switch` / `browser_tab_close`。
+4. **标注拾取**:工具栏的 ⌖ 把 vendored Selector 编辑器注入当前页面,标注结果直接排进该标签页所属会话。
 
 > **不再依赖旧座位**:旧版本的私有三件套(`sidebar.footer.action` 侧边栏按钮、`shell.overlay` 全屏悬浮面板、自带多标签条)与 `dsh-sidebar-live` 的耦合已全部移除;构建产物里不再出现这两个 slot 名。
 
