@@ -1,20 +1,31 @@
 /**
- * Build the browser client bundle for dsh-builtin-browser. Emits the closure
- * factory artifact the dsh client loader serves: window.__ModuleLoader__.load
- * stamps the package id, and platform modules (react, cordis, the client
- * shells) resolve through the injected require instead of being bundled.
- * Mirrors the harness repo's clientBundle preset for a single package.
+ * Build the browser client bundle for dsh-builtin-browser. Emits the factory
+ * artifact the dsh Client loader serves: `window.__ModuleLoader__.load` stamps
+ * the package id, and platform modules resolve through the injected `require`
+ * instead of being bundled.
+ *
+ * `PLATFORM_EXTERNALS` is exactly the Web shell's static module table (see
+ * dsh-web's `qJ()`): react, react-dom, cordis, zod, and the four Client
+ * packages the shell seeds. A request outside it either names a boot-graph row
+ * (a Harness Client plugin, which a type-only import never turns into a
+ * request) or must be inlined, so keep this list in step with the kernel.
  */
 
 import type { UserConfig } from 'tsdown'
 
-/** Platform modules the browser loader table already owns (external). */
+/** The Web shell's static module table — the only modules a bundle may externalize. */
 const PLATFORM_EXTERNALS = [
-  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
-  '@deepseek-ai/dsh-client-connection', '@deepseek-ai/dsh-client-connection/client',
-  '@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-web-react',
-  '@deepseek-ai/dsh-client-ui-primitives', '@deepseek-ai/dsh-client-ui-attachment',
-  '@deepseek-ai/dsh-client-schema-form', '@deepseek-ai/dsh-client-runtime/client',
+  'react',
+  'react/jsx-runtime',
+  'react-dom',
+  'react-dom/client',
+  '@deepseek-ai/cordis',
+  'zod',
+  '@tanstack/react-virtual',
+  '@deepseek-ai/dsh-client-store',
+  '@deepseek-ai/dsh-client-ui-slots',
+  '@deepseek-ai/dsh-client-ui-primitives',
+  '@deepseek-ai/dsh-client-ui-dockkit',
 ]
 
 const config: UserConfig = {
@@ -27,8 +38,8 @@ const config: UserConfig = {
   sourcemap: true,
   clean: false,
   external: PLATFORM_EXTERNALS,
-  // Everything not in the loader module table inlines into the bundle; a
-  // require() the table cannot answer would throw at runtime.
+  // Everything not in the shell's table inlines into the bundle; a require()
+  // the table cannot answer throws at runtime, so nothing else may stay external.
   noExternal: (id: string) => (PLATFORM_EXTERNALS.includes(id) ? undefined : true),
   outputOptions: {
     entryFileNames: 'client.js',

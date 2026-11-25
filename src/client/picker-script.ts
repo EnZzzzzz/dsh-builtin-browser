@@ -23,8 +23,8 @@ const STYLE_ID = '__dsh_selector_style'
 export const OUTBOX_KEY = '__dshSelectorOutbox'
 
 /** Seed the host seam the editor's core.js reads before it initializes. */
-function hostSeed(tabId: number | undefined): string {
-  return `window.__SELECTOR_HOST__ = { initialLang: 'zh', tabId: ${tabId === undefined ? 'null' : JSON.stringify(tabId)}, sendPrompt: function (text) { window.${OUTBOX_KEY} = text; } };`
+function hostSeed(tabKey: string | undefined): string {
+  return `window.__SELECTOR_HOST__ = { initialLang: 'zh', tabId: ${tabKey === undefined ? 'null' : JSON.stringify(tabKey)}, sendPrompt: function (text) { window.${OUTBOX_KEY} = text; } };`
 }
 
 /** Idempotently inject the editor stylesheet as a `<style>` element. */
@@ -41,9 +41,10 @@ const CSS_INJECT = `(function () {
  * The full injection program, run in the guest via `webview.executeJavaScript`.
  * The editor bundle's own `.ai-editor-root` guard makes repeated injection a
  * soft resume, so double-clicking the ⌖ button never stacks instances.
+ * @param tabKey - the sidebar tab's content key, reported in the annotation.
  */
-export function buildInjectionCode(tabId?: number): string {
-  return `${hostSeed(tabId)}\n${CSS_INJECT}\n${editorBundle}`
+export function buildInjectionCode(tabKey?: string): string {
+  return `${hostSeed(tabKey)}\n${CSS_INJECT}\n${editorBundle}`
 }
 
 /**

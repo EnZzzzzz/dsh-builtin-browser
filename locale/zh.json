@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "内置浏览器",
+    "description": "在右侧边栏以原生标签页浏览网页，并让助手直接读取、截图与操作当前页面。",
+    "detail": "docs/DETAIL.md"
+  }
+}

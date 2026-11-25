@@ -16,11 +16,12 @@ import type { ReactNode } from 'react'
 /** Shared icon props: size in px (Radix glyphs are designed at 15). */
 export interface IconProps {
   size?: number
+  className?: string
 }
 
 /** Common Radix SVG shell: 15×15 viewBox, fill inherits currentColor. */
 function Svg(props: IconProps & { children: ReactNode }): ReactNode {
-  const { size = 15, children } = props
+  const { size = 15, children, className } = props
   return (
     <svg
       width={size}
@@ -29,6 +30,7 @@ function Svg(props: IconProps & { children: ReactNode }): ReactNode {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden={true}
+      className={className}
       style={{ display: 'block' }}
     >
       {children}

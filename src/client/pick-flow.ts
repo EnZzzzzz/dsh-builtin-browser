@@ -1,7 +1,7 @@
 /**
  * Element-picking orchestration: inject the vendored Selector editor into the
  * active tab's page surface, poll the guest outbox for a prompt, send it to
- * the current session, then tear the editor down.
+ * the tab's Session, then tear the editor down.
  *
  * Injection and polling differ by surface type:
  *  - an Electron `<webview>` is scripted with `executeJavaScript` (works
@@ -9,70 +9,45 @@
  *  - a same-origin `<iframe>` gets the same program via a `<script>` element
  *    (cross-origin frames are opaque and show a toast).
  *
- * React components only read `browserStore` state; this module owns the
- * injection, polling, and send lifecycle. The lazy `sendPrompt` callback is
- * wired in by ./index.ts at apply time so the sessions service resolves at
- * send time rather than at apply time. This is the shared engine behind every
- * browser view (floating panel, in-session view), so it must not depend on
- * which view renders the surface.
+ * The sidebar tab body owns the toolbar and passes its own store, copy, and
+ * content key here; this module owns the injection, polling, and send
+ * lifecycle. The `sendPrompt` callback is wired by `src/client/index.ts` at
+ * apply time so the sessions service resolves at send time, not at apply time.
  *
  * @module dsh-builtin-browser/client/pick-flow
  */
 
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { buildInjectionCode, buildPollExpression, DESTROY_EXPRESSION, OUTBOX_KEY } from './picker-script.js'
-import { browserStore, type PageSurfaceElement } from './store.js'
+import type { BrowserPageStore, PageSurfaceElement } from './store.js'
 
-/** Lazily-resolved send callback: forwards a prompt to the current session. */
-type SendPrompt = (text: string) => Promise<void>
+/** Lazily-resolved send callback: queues a prompt into one Session. */
+export type SendPrompt = (sessionId: SessionId, text: string) => Promise<void>
+
+/** Copy the pick flow needs from the tab's locale namespace. */
+export interface PickFlowCopy {
+  pickSent: () => string
+  pickNotReady: () => string
+  pickCrossOrigin: () => string
+}
 
 const POLL_INTERVAL_MS = 500
 
 let sendPrompt: SendPrompt | undefined
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let sending = false
-let unsubscribe: (() => void) | null = null
+let polling: BrowserPageStore | null = null
 
 /** Wire the send callback (called once from ./index.ts at apply). */
 export function setupPickFlow(handle: { sendPrompt: SendPrompt }): void {
   sendPrompt = handle.sendPrompt
 }
 
-/** Previous `open` value, for closed-while-picking edge detection. */
-let wasOpen = browserStore.get().open
-
-/** Subscribe once to keep picking in sync with the browser's open state. */
-export function mountPickFlow(): void {
-  if (unsubscribe) return
-  unsubscribe = browserStore.subscribe(() => {
-    const open = browserStore.get().open
-    // Stop picking only when the browser was actually CLOSED while picking
-    // was armed (a true→false transition of `open`), not merely because
-    // `open` is false. `open` tracks the floating panel's visibility; an
-    // in-session view (dsh-sidebar-live) stays visible with `open === false`
-    // and even calls setOpen(false) after a successful 标注 send — a plain
-    // `!open && picking` check would kill every subsequent pick the moment
-    // it starts, making the ⌖ button appear dead after the first use.
-    if (wasOpen && !open && browserStore.get().picking) {
-      void stopPicking()
-    }
-    wasOpen = open
-  })
-}
-
-/** The ⌖ button handler: toggle element-picking on/off. */
-export function togglePicking(): void {
-  if (browserStore.get().picking) {
-    void stopPicking()
-  } else {
-    void startPicking()
-  }
-}
-
 /**
- * Run `script` in the active tab's guest: webview via executeJavaScript (no
- * same-origin restriction), iframe via a `<script>` element (the browser
- * blocks cross-origin iframe access, so opaque frames throw).
- * @param surface - the active tab's page-surface element.
+ * Run `script` in a tab's guest: webview via executeJavaScript (no same-origin
+ * restriction), iframe via a `<script>` element (the browser blocks
+ * cross-origin iframe access, so opaque frames throw).
+ * @param surface - the tab's page-surface element.
  * @param script - the program to run in the guest.
  * @param userGesture - pass through to webview.executeJavaScript.
  */
@@ -82,7 +57,7 @@ async function runInGuest(surface: PageSurfaceElement, script: string, userGestu
     return
   }
   const doc = (surface as HTMLIFrameElement).contentDocument
-  if (!doc) throw new Error('浏览器安全策略禁止标注跨域页面（iframe 模式）；请使用 dsh-desktop 桌面端，或导航到同源页面')
+  if (!doc) throw new Error('cross-origin')
   const el = doc.createElement('script')
   el.textContent = script
   ;(doc.head || doc.documentElement).appendChild(el)
@@ -100,7 +75,8 @@ function pollFrame(surface: PageSurfaceElement): { text: string | null; present:
       text: typeof text === 'string' ? text : null,
       present: !!win.document.querySelector('.ai-editor-root'),
     }
-  } catch {
+  }
+  catch {
     return null
   }
 }
@@ -108,61 +84,98 @@ function pollFrame(surface: PageSurfaceElement): { text: string | null; present:
 /** Tear the editor down and leave picking mode (silent, no toast). */
 export async function stopPicking(): Promise<void> {
   stopPoll()
-  browserStore.setPicking(false)
-  const surface = browserStore.getSurface()
-  if (!surface) return
+  const page = polling
+  polling = null
+  if (page !== null) page.setPicking(false)
+  const surface = page?.getSurface() ?? null
+  if (surface === null) return
   try {
     if (surface.executeJavaScript) {
       await surface.executeJavaScript(DESTROY_EXPRESSION, false)
-    } else {
+    }
+    else {
       const win = (surface as HTMLIFrameElement).contentWindow
       if (win) {
         const guest = win as unknown as Record<string, unknown>
         if (typeof guest.__SELECTOR_DESTROY__ === 'function') (guest.__SELECTOR_DESTROY__ as () => void)()
         const style = win.document?.getElementById('__dsh_selector_style')
-        if (style) style.remove()
+        if (style !== undefined && style !== null) style.remove()
       }
     }
-  } catch {
+  }
+  catch {
     // Guest already navigated away or was destroyed; nothing to tear down.
   }
 }
 
-async function startPicking(): Promise<void> {
-  const surface = browserStore.getSurface()
-  if (!surface) {
+/**
+ * The ⌖ button handler of one tab: arm picking in that tab, or disarm it.
+ * @param options - the tab's store, its Session, its content key, and copy.
+ */
+export function togglePicking(options: {
+  page: BrowserPageStore
+  sessionId: SessionId
+  contentKey: string
+  copy: PickFlowCopy
+}): void {
+  const { page, sessionId, contentKey, copy } = options
+  if (page.getSnapshot().picking) {
+    void stopPicking()
+    return
+  }
+  const surface = page.getSurface()
+  if (surface === null) {
     // Never fail silently: a toolbar click must always answer.
-    browserStore.showToast('浏览器页面尚未就绪，请稍后再试')
+    page.showToast(copy.pickNotReady())
     return
   }
-  try {
-    await runInGuest(surface, buildInjectionCode(browserStore.get().activeTabId), true)
-  } catch (err) {
-    browserStore.showToast(err instanceof Error ? err.message : String(err))
-    return
-  }
-  browserStore.setPicking(true)
-  startPoll()
+  void startPicking({ page, sessionId, contentKey, copy, surface })
 }
 
-function startPoll(): void {
-  if (pollTimer) return
+async function startPicking(context: {
+  page: BrowserPageStore
+  sessionId: SessionId
+  contentKey: string
+  copy: PickFlowCopy
+  surface: PageSurfaceElement
+}): Promise<void> {
+  const { page, contentKey, copy, surface } = context
+  try {
+    await runInGuest(surface, buildInjectionCode(contentKey), true)
+  }
+  catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    // `runInGuest` reports a blocked cross-origin frame with this sentinel.
+    page.showToast(message === 'cross-origin' ? copy.pickCrossOrigin() : message)
+    return
+  }
+  polling = page
+  page.setPicking(true)
+  startPoll(context)
+}
+
+function startPoll(context: {
+  page: BrowserPageStore
+  sessionId: SessionId
+  copy: PickFlowCopy
+}): void {
+  if (pollTimer !== null) return
   pollTimer = setInterval(() => {
-    void pollTick()
+    void pollTick(context)
   }, POLL_INTERVAL_MS)
 }
 
 function stopPoll(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
+  if (pollTimer === null) return
+  clearInterval(pollTimer)
+  pollTimer = null
 }
 
-async function pollTick(): Promise<void> {
-  if (sending || !browserStore.get().picking) return
-  const surface = browserStore.getSurface()
-  if (!surface) {
+async function pollTick(context: { page: BrowserPageStore; sessionId: SessionId; copy: PickFlowCopy }): Promise<void> {
+  const { page, sessionId, copy } = context
+  if (sending || !page.getSnapshot().picking) return
+  const surface = page.getSurface()
+  if (surface === null || polling !== page) {
     void stopPicking()
     return
   }
@@ -170,45 +183,50 @@ async function pollTick(): Promise<void> {
   if (surface.executeJavaScript) {
     try {
       polled = await surface.executeJavaScript(buildPollExpression(), false) as { text?: string | null; present?: boolean } | null | undefined
-    } catch {
+    }
+    catch {
       // Guest destroyed mid-navigation (manual nav while picking).
       void stopPicking()
       return
     }
-  } else {
+  }
+  else {
     polled = pollFrame(surface)
     if (polled === null) {
       void stopPicking()
       return
     }
   }
-  if (polled && typeof polled.text === 'string' && polled.text.length > 0) {
-    await handleOutbox(polled.text)
+  if (polled !== null && polled !== undefined && typeof polled.text === 'string' && polled.text.length > 0) {
+    await handleOutbox(context, polled.text)
     return
   }
-  if (polled && polled.present === false) {
+  if (polled !== null && polled !== undefined && polled.present === false) {
     // The editor vanished without our teardown: the user closed it via its ✕ or
     // a real navigation replaced the document. Exit silently.
     void stopPicking()
   }
 }
 
-async function handleOutbox(text: string): Promise<void> {
+async function handleOutbox(
+  context: { page: BrowserPageStore; sessionId: SessionId; copy: PickFlowCopy },
+  text: string,
+): Promise<void> {
+  const { page, sessionId, copy } = context
   sending = true
   try {
-    if (!sendPrompt) throw new Error('picker send unavailable')
-    await sendPrompt(text)
-    // Success: tear the editor down and confirm. The floating panel also
-    // closes so the user sees the message land in the session; an in-session
-    // view keeps its (view-ring) visibility and just shows the toast.
+    if (sendPrompt === undefined) throw new Error('picker send unavailable')
+    await sendPrompt(sessionId, text)
+    // Success: tear the editor down and confirm in the toolbar. The sidebar tab
+    // stays where it is, so the user watches the message land beside the page.
     await stopPicking()
-    browserStore.showToast('标注已发送给助手', true)
-    browserStore.setOpen(false)
-  } catch (err) {
-    // Failure (no active session / RPC error): keep the editor, show the red
-    // toast under the toolbar.
-    browserStore.showToast(err instanceof Error ? err.message : String(err))
-  } finally {
+    page.showToast(copy.pickSent(), true)
+  }
+  catch (err) {
+    // Failure (no active session / RPC error): keep the editor, show the toast.
+    page.showToast(err instanceof Error ? err.message : String(err))
+  }
+  finally {
     sending = false
   }
 }

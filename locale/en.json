@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Built-in browser",
+    "description": "Browse the web in a native right-sidebar tab and let the agent read, screenshot, and drive the page.",
+    "detail": "docs/DETAIL.md"
+  }
+}

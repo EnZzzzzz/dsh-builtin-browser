@@ -1,20 +1,25 @@
 /**
- * Standalone style playground for the built-in browser UI.
+ * Standalone style playground for the built-in browser tab body.
  *
- * Mounts the real plugin components outside the dsh runtime so styles can be
- * tweaked quickly:
+ * Mounts the REAL `BrowserTab` component outside the dsh runtime so its styles
+ * and interactions can be tweaked quickly. The component expects the right
+ * Sidebar's framework props, so this harness supplies a minimal stand-in for
+ * them:
  *
- *  - `BrowserToggle` (sidebar.footer.action) in a fake sidebar strip, wide
- *    and narrow variants;
- *  - `BrowserPanel` (shell.overlay) — the combined toolbar/tab row — forced
- *    open on load; close it with its ✕ to see the rest of the playground;
- *  - the vendored Selector editor (标注组件), driven by the REAL pick flow
- *    (src/client/pick-flow.ts): the panel's ⌖ button works here because the
- *    playground patches each panel surface with an `executeJavaScript` that
- *    evals on this page. Hover styles to tweak live in
- *    vendor/selector/editor.css (`.ai-editor-hover-box`); saving triggers a
- *    rebuild + reload of this page. While picking, the editor swallows page
- *    clicks — Escape is the way out.
+ *  - `useTabInfo()` returns a fake tab record (content id, visible, no
+ *    navigation) — enough for the body's own state machine;
+ *  - `sessionId` is a placeholder, and `openAnotherTab` just bumps a counter;
+ *  - `t()` reads the real `zh` dictionary from src/client/locales.ts;
+ *  - the page surface is faked: no Chromium webview exists here, so the ⌖
+ *    button drives the REAL pick flow (src/client/pick-flow.ts) with an
+ *    `executeJavaScript` that evals on this page. Hover styles to tweak live
+ *    in vendor/selector/editor.css (`.ai-editor-hover-box`); saving triggers a
+ *    rebuild + reload. While picking, the editor swallows page clicks — Escape
+ *    is the way out.
+ *
+ * The surrounding sidebar chrome (tab chips, guide, dock) belongs to
+ * ui-sidebar-right and is deliberately NOT reproduced: only the body's own
+ * toolbar, notices, and surface are this package's to style.
  *
  * Served by ./dev.mjs with watch-rebuild + auto-reload. Not shipped: this
  * directory is dev tooling only.
@@ -22,83 +27,116 @@
  * @module playground/main
  */
 
-import { createElement, useState, type ReactNode } from 'react'
+import { createElement, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserPanel, type BrowserPanelProps } from '../src/client/BrowserPanel.js'
-import { BrowserToggle, type BrowserToggleProps } from '../src/client/BrowserToggle.js'
-import { browserStore } from '../src/client/store.js'
+import { BrowserTab } from '../src/client/BrowserTab.js'
+import type { BrowserTabProps } from '../src/client/BrowserTab.js'
 import { setupPickFlow, stopPicking, togglePicking } from '../src/client/pick-flow.js'
+import { createBrowserPageStore, type BrowserPageStore } from '../src/client/store.js'
 import { buildInjectionCode } from '../src/client/picker-script.js'
+import { LOCALES } from '../src/client/locales.js'
 
 // ---------------------------------------------------------------------------
-// Real pick flow, fake guest: no Chromium webview here, so every panel
-// surface gets an `executeJavaScript` that evals on this page instead. The
-// Selector editor then annotates the playground page itself.
+// Real pick flow, fake guest: every surface gets an `executeJavaScript` that
+// evals on this page instead, so the Selector editor annotates the playground
+// itself.
 // ---------------------------------------------------------------------------
 
-/**
- * A never-mounted element standing in for the guest page while the panel is
- * closed (its real surfaces unmount with the panel, and pick-flow needs a
- * surface to inject into). Its executeJavaScript evals on this page.
- */
-const fakeSurface = document.createElement('div') as HTMLElement & {
-  executeJavaScript: (code: string) => Promise<unknown>
-}
-fakeSurface.executeJavaScript = async (code: string) => (0, eval)(code)
+type FakeSurface = HTMLElement & { executeJavaScript: (code: string) => Promise<unknown> }
 
-function patchSurfaces(): void {
-  // Mounted panel surfaces (webview in shell mode, iframe otherwise) get a
-  // page-level eval too, so ⌖ with the panel open injects the editor here.
-  for (const el of document.querySelectorAll('webview, iframe')) {
-    const fake = el as HTMLElement & { executeJavaScript?: (code: string) => Promise<unknown> }
-    if (!fake.executeJavaScript) {
-      fake.executeJavaScript = async (code: string) => (0, eval)(code)
-    }
-  }
-  // Panel closed → no mounted surface → register the fake one so the real
-  // pick flow still runs (this is how you hover the test blocks below).
-  if (!browserStore.getSurface()) {
-    browserStore.setSurface(browserStore.get().activeTabId, fakeSurface)
-  }
+/** A detached element standing in for a guest page (and its executeJavaScript). */
+function fakeSurface(): FakeSurface {
+  const el = document.createElement('div') as FakeSurface
+  el.executeJavaScript = async (code: string) => (0, eval)(code)
+  return el
 }
-setInterval(patchSurfaces, 300)
+
+const surface = fakeSurface()
 
 function showPicked(text: string): void {
   const box = document.getElementById('picked-result')
-  if (box) {
+  if (box !== null) {
     box.textContent = text
     box.style.display = 'block'
   }
 }
 
-// The pick flow sends to the current session in production; here the
-// "session" is the picked-result box in the sidebar. Note mountPickFlow is
-// intentionally NOT wired: it stops picking whenever the panel closes, but
-// in the playground you close the panel FIRST and then pick page elements.
+// The pick flow sends to the tab's Session in production; here the "session" is
+// the picked-result box in the sidebar.
 setupPickFlow({
-  sendPrompt: async (text) => {
+  sendPrompt: async (_sessionId, text) => {
     showPicked(text)
   },
 })
 
-// While picking, the editor swallows page clicks (it is picking elements),
-// so the ⌖ button is unreachable — Escape is the reliable way out.
+// While picking, the editor swallows page clicks, so the ⌖ button is
+// unreachable — Escape is the reliable way out.
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && browserStore.get().picking) void stopPicking()
+  if (event.key === 'Escape') void stopPicking()
 })
 
-// Style-tweaking loop helper: the dev server reloads this page after every
-// rebuild, which would kill the editor mid-tweak. Remember the picking state
-// and resume it after the reload, so hover-style edits feel live.
-const PICK_FLAG = 'pg-picking'
-browserStore.subscribe(() => {
-  sessionStorage.setItem(PICK_FLAG, browserStore.get().picking ? '1' : '')
-})
-if (sessionStorage.getItem(PICK_FLAG) === '1') {
-  // Wait one patch-interval so a surface (fake or real) is registered first.
-  setTimeout(() => {
-    if (!browserStore.get().picking) togglePicking()
-  }, 500)
+// ---------------------------------------------------------------------------
+// A minimal stand-in for the right Sidebar's framework props.
+// ---------------------------------------------------------------------------
+
+/** The zh dictionary as the context-bound translate seat. */
+function translate(key: keyof (typeof LOCALES)['zh']): string {
+  return LOCALES.zh[key]
+}
+
+/**
+ * Mount one browser tab body.
+ * @param props - the fake tab information and the region to draw in.
+ */
+function TabHarness(props: { visible: boolean; onNewTab: () => void }): ReactNode {
+  const { visible, onNewTab } = props
+  // Stable per mount, so a "remount" button creates a genuinely fresh body.
+  const storeRef = useRef<BrowserPageStore | null>(null)
+  if (storeRef.current === null) {
+    storeRef.current = createBrowserPageStore({
+      // The playground has no real Session; the store only keys its checkpoint.
+      sessionId: 'playground' as unknown as Parameters<typeof createBrowserPageStore>[0]['sessionId'],
+      checkpointKey: null,
+      inShell: true,
+    })
+  }
+  const store = storeRef.current
+
+  // Give the body a live surface: its own <webview>/<iframe> never mounts in
+  // this harness, so bind the fake one and let the pick flow use it.
+  useEffect(() => {
+    store.setSurface(surface)
+  }, [store])
+
+  useEffect(() => {
+    if (visible) store.claim()
+  }, [store, visible])
+
+  // Sync the picking state into the harness so Escape can restore it.
+  useEffect(() => store.subscribe(() => {
+    sessionStorage.setItem('pg-picking', store.getSnapshot().picking ? '1' : '')
+  }), [store])
+
+  const tabProps = {
+    useTabInfo: () => ({
+      sidebar: { expanded: true, fullscreen: false },
+      panel: { id: 'pane', isFloating: false },
+      tab: {
+        id: 'tab',
+        kind: 'builtin-browser',
+        contentId: 'pg',
+        title: translate('type.label'),
+        visible,
+        signal: new AbortController().signal,
+        navigation: { address: '', params: undefined, revision: 0 },
+      },
+    }),
+    sessionId: 'playground',
+    t: translate,
+    openAnotherTab: onNewTab,
+  } as unknown as BrowserTabProps
+
+  return createElement(BrowserTab, tabProps)
 }
 
 // ---------------------------------------------------------------------------
@@ -112,29 +150,22 @@ function svgImg(label: string, from: string, to: string): string {
 }
 
 function Shell(): ReactNode {
-  const [panelKey, setPanelKey] = useState(0)
+  const [tabKey, setTabKey] = useState(0)
+  const [visible, setVisible] = useState(true)
+  const [newTabs, setNewTabs] = useState(0)
   return (
     <>
       <header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid #333' }}>
         <strong>样式 Playground</strong>
         <button onClick={() => togglePicking()}>启动/停止拾取</button>
-        <button onClick={() => browserStore.toggle()}>开/关浏览器面板</button>
-        <button onClick={() => setPanelKey((k) => k + 1)}>重挂载面板</button>
-        <span style={{ opacity: 0.5, fontSize: 12 }}>改样式保存后自动重建并刷新</span>
+        <button onClick={() => setVisible((v) => !v)}>切换可见(visible: {String(visible)})</button>
+        <button onClick={() => setTabKey((k) => k + 1)}>重挂载标签页</button>
+        <span style={{ opacity: 0.5, fontSize: 12 }}>新建标签按钮点了 {newTabs} 次 · 改样式保存后自动重建并刷新</span>
       </header>
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <aside style={{ width: 220, padding: 12, borderRight: '1px solid #333', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: 12, opacity: 0.5 }}>侧边栏按钮(宽)</div>
-          <BrowserToggle {...({ wide: true } as unknown as BrowserToggleProps)} />
-          <div style={{ fontSize: 12, opacity: 0.5, marginTop: 8 }}>侧边栏按钮(窄)</div>
-          <div style={{ width: 40 }}>
-            <BrowserToggle {...({ wide: false } as unknown as BrowserToggleProps)} />
-          </div>
-          <pre id="picked-result" style={{ display: 'none', whiteSpace: 'pre-wrap', fontSize: 11, background: '#1c1c1e', padding: 8, borderRadius: 8, maxHeight: 240, overflow: 'auto' }} />
-        </aside>
         <main style={{ flex: 1, padding: 24, overflow: 'auto' }}>
           <h1>演示内容</h1>
-          <p>点头部或面板工具栏的拾取按钮(⌖),编辑器注入在本页面上工作。Esc 退出拾取。</p>
+          <p>点浏览器工具栏的拾取按钮(⌖),编辑器注入在本页面上工作。Esc 退出拾取。</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 16 }}>
             {['深潜蓝', '柠檬黄', '安全橙'].map((name, i) => (
               <div key={name} className="demo-card" style={{ border: '1px solid #444', borderRadius: 12, padding: 16 }}>
@@ -176,11 +207,6 @@ function Shell(): ReactNode {
               </div>
             </div>
           </section>
-          <ul style={{ marginTop: 24, lineHeight: 2 }}>
-            <li>列表项一:https://example.com/a</li>
-            <li>列表项二:包含 <code>行内代码</code> 和 <a href="#x">链接</a></li>
-            <li>列表项三:<strong>加粗</strong>、<em>斜体</em>混合文本</li>
-          </ul>
           <section style={{ marginTop: 32 }}>
             <h2>内容测试区</h2>
             <div style={{ display: 'flex', gap: 16, marginTop: 12, alignItems: 'flex-start' }}>
@@ -191,29 +217,23 @@ function Shell(): ReactNode {
                   <span style={{ opacity: 0.7 }}> — 图 + 图注,hover 可以分别选中 img 和 figcaption。</span>
                 </figcaption>
               </figure>
-              <article style={{ width: 340, border: '1px solid #444', borderRadius: 12, padding: '4px 16px 14px', fontSize: 13, lineHeight: 1.8 }}>
-                <h3>文字块</h3>
-                <p style={{ margin: '6px 0' }}>
-                  一段普通正文,里面夹着 <a href="#y">一个链接</a>、<code>inline code</code> 和
-                  <mark style={{ background: '#F5D90A55', borderRadius: 3 }}>高亮文本</mark>,方便测试各种行内元素的 hover。
-                </p>
-                <p style={{ margin: '6px 0', opacity: 0.7 }}>第二段,字号相同、透明度低一点,用来对比 hover 框在弱对比文字上的表现。</p>
-              </article>
             </div>
           </section>
         </main>
+        {/* The right Sidebar pane: only the body's own chrome is ours to style. */}
+        <aside style={{ width: 420, borderLeft: '1px solid #333', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ padding: '6px 10px', fontSize: 12, opacity: 0.5, borderBottom: '1px solid #2a2a2a' }}>
+            右侧栏 Browser 标签页(外壳属于 ui-sidebar-right)
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <TabHarness key={tabKey} visible={visible} onNewTab={() => setNewTabs((n) => n + 1)} />
+          </div>
+          <pre id="picked-result" style={{ display: 'none', whiteSpace: 'pre-wrap', fontSize: 11, background: '#1c1c1e', padding: 8, maxHeight: 200, overflow: 'auto', margin: 0 }} />
+        </aside>
       </div>
-      {/* key 让「重挂载面板」强制全新挂载,模拟面板首次打开。 */}
-      <BrowserPanel key={panelKey} {...({} as unknown as BrowserPanelProps)} />
     </>
   )
 }
-
-// Open the panel on load so its styles are immediately visible, and claim
-// shell mode so the panel's ⌖ pick button renders (its surface is faked
-// above — no real webview guest exists here).
-browserStore.setOpen(true)
-browserStore.setInShell(true)
 
 document.body.style.margin = '0'
 document.body.style.background = '#141415'
@@ -226,5 +246,5 @@ app.style.height = '100vh'
 
 createRoot(app).render(createElement(Shell))
 
-// Debug handle for poking the store from the page console (playground only).
-;(window as unknown as { __pg: unknown }).__pg = { browserStore, buildInjectionCode }
+// Debug handle for poking things from the page console (playground only).
+;(window as unknown as { __pg: unknown }).__pg = { buildInjectionCode, stopPicking }

@@ -1,46 +1,44 @@
 /**
  * dsh-builtin-browser browser half: the built-in browser of a Desktop-wrapped
- * DeepSeek Harness.
+ * DeepSeek Harness, delivered as a NATIVE RIGHT-SIDEBAR TAB.
  *
- * This is the shared BROWSER CORE: one store + controller + pick flow that any
- * view can render. This package ships its own floating full-screen panel
- * (`shell.overlay`) and sidebar toggle (`sidebar.footer.action`), and also
- * re-exports the core pieces (`browserStore`, `pageBrowserController`,
- * `BLANK_PAGE`, `setOpenHandler`, and the pick-flow API) so another client
- * bundle — dsh-sidebar-live renders its own in-session browser view — can
- * drive the same engine without forking it. The views register the engine's
- * "open" behavior through `setOpenHandler` when they need a different notion
- * of "open the browser" than the floating panel's visibility flag.
- *
- * Export discipline (packages/client/AGENTS.md): the public surface is
- * `apply`/`inject` plus the explicitly re-exported core pieces below; the
- * view components and their props stay internal.
+ * Entry point (what replaced the old private floating panel):
+ *  - the type registers through `ctx.sidebarRightTabs` (stage one: what it is,
+ *     plus the guide capsule that opens it), and its body and title through the
+ *     official `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title` seats
+ *     under this package's id (stage two);
+ *  - the tab strip, docking, splitting, floating, and closing belong to
+ *     ui-sidebar-right, so this package draws no tab list, no overlay, and no
+ *     sidebar button of its own, and depends on neither `shell.overlay` nor the
+ *     legacy `sidebar.footer.action` seat;
+ *  - `window.__dshBrowser` (the page-side controller the Desktop shell drives
+ *     through `executeJavaScript`) still exists for the host half's `browser_*`
+ *     tools, but it now targets the browser tab that is on screen.
  *
  * @module dsh-builtin-browser/client
  */
 
-// Type-only: pulls the slots shell's SlotMap merge (the 'sidebar.footer.action'
-// and 'shell.overlay' entries are declared by ui-sidebar and ui-layout).
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { ClientContext } from './env.js'
+// Type-only imports: they bring the SlotMap / LocaleNamespaceMap / standard-prop
+// declarations into this program and are erased at build time, so they create
+// no module request from the bundle.
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import { BrowserPanel } from './BrowserPanel.js'
-import { BrowserToggle } from './BrowserToggle.js'
-import { mountPickFlow, setupPickFlow, togglePicking, stopPicking } from './pick-flow.js'
-import { BLANK_PAGE, browserStore, pageBrowserController, setOpenHandler } from './store.js'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
+import type { ShortcutCommand } from '@deepseek-ai/dsh-client-shortcuts/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { BrowserTab } from './BrowserTab.js'
+import { BrowserTitle } from './BrowserTitle.js'
+import { BROWSER_KIND, browserDefinition, NEW_TAB_COMMAND } from './definition.js'
+import type { BrowserTabInjected, SidebarRightTarget } from './env.js'
+import { LOCALES, NS } from './locales.js'
+import { setupPickFlow } from './pick-flow.js'
+import { clearActiveBrowserPage, pageBrowserController } from './store.js'
 
-/** Required services (cordis fiber inject): the slots registry. */
-export const inject = ['slots']
+/** Required services (cordis fiber inject): slots, the right Sidebar, and copy. */
+export const inject = ['slots', 'sidebarRight', 'sidebarRightTabs', 'locale']
 
-// --- Shared browser core (re-exported for other views) -------------------
-// dsh-sidebar-live's in-session browser view drives this same engine via
-// `require('dsh-builtin-browser/client')`; it must stay view-agnostic.
-export { BLANK_PAGE, browserStore, pageBrowserController, setOpenHandler } from './store.js'
-export type { BrowserTab, BrowserPanelState, PageSurfaceElement } from './store.js'
-export { mountPickFlow, setupPickFlow, stopPicking, togglePicking } from './pick-flow.js'
-
-/** Window slot the shell's executeJavaScript targets. */
+/** Window slot the Desktop shell's executeJavaScript targets. */
 const CONTROLLER_KEY = '__dshBrowser'
 
 /**
@@ -54,63 +52,115 @@ function guardSlash(text: string): string {
 }
 
 /**
- * Queue one prompt text into the current session. Resolves the sessions service
- * lazily (at send time, not apply time) and throws a user-facing message on the
- * "no active session" and RPC-failure paths for the pick flow's toast.
+ * Wrap one prompt into the Session the browser tab belongs to. Resolves the
+ * sessions service lazily (at send time, not apply time) and throws a
+ * user-facing message for the pick flow's toast.
  * @param ctx - the browser plugin context.
+ * @param sessionId - owning Session of the tab the annotation came from.
  * @param text - the prompt text (Selector's Design-Feedback markdown).
+ * @param t - the package's translate seat, for the two failure messages.
  */
-async function sendToSession(ctx: ClientContext, text: string): Promise<void> {
+async function sendToSession(
+  ctx: ClientContext,
+  sessionId: SessionId,
+  text: string,
+  t: (key: import('./locales.js').BuiltinBrowserKey) => string,
+): Promise<void> {
   const sessions = ctx.get('sessions')
-  if (!sessions) throw new Error('会话服务不可用')
-  const current = sessions.list.getSnapshot().current
-  if (current === undefined) throw new Error('没有活跃会话，请先新建会话')
-  const session = sessions.binding(current)?.session
-  if (!session) throw new Error('没有活跃会话，请先新建会话')
+  if (sessions === undefined || sessions === null) throw new Error(t('pick.noSession'))
+  const session = sessions.binding(sessionId)?.session
+  if (!session) throw new Error(t('pick.sessionClosed'))
   const result = await session.prompt([{ type: 'text', text: guardSlash(text) }], 'queue')
   if (!result.ok) throw new Error(result.error.message)
 }
 
 /**
- * Mount the built-in browser UI.
+ * Build the `browser.new` command: one more browser tab beside the one in focus.
+ * @param ctx - the browser plugin context.
+ * @param label - localized command label, also the reason when nothing is open.
+ * @returns the command definition to register.
+ */
+function newTabCommand(ctx: ClientContext, label: () => string): ShortcutCommand {
+  return {
+    id: NEW_TAB_COMMAND,
+    label,
+    aliases: ['browser', 'new browser tab'],
+    defaults: {
+      'desktop:macos': { code: 'KeyT', modifiers: ['primary', 'shift'] },
+      'desktop:windows': { code: 'KeyT', modifiers: ['primary', 'shift'] },
+      'desktop:linux': { code: 'KeyT', modifiers: ['primary', 'shift'] },
+      'web:macos': { code: 'KeyT', modifiers: ['primary', 'alt', 'shift'] },
+      'web:windows': { code: 'KeyT', modifiers: ['primary', 'alt', 'shift'] },
+    },
+    regions: ['page', 'editable', 'terminal'],
+    modals: [],
+    resolve: ({ target }) => {
+      const captured: SidebarRightTarget | undefined = ctx.sidebarRight.commandTarget(target ?? null)
+      if (captured === undefined) return { status: 'blocked', reason: label() }
+      return {
+        status: 'handled',
+        run: () => {
+          // ui-sidebar-right expands the column and places the page in the
+          // active docked pane; each open is a new instance (multiple: true).
+          ctx.sidebarRight.openTab(BROWSER_KIND)
+        },
+      }
+    },
+  }
+}
+
+/**
+ * Mount the built-in browser tab type.
  * @param ctx - the browser plugin context.
  */
 export function apply(ctx: ClientContext): void {
   const slots = ctx.get('slots')
-  if (slots === undefined) return
+  if (slots === undefined || slots === null) return
 
-  // Detect the Electron shell: the shell's preload (desktop/preload.js)
-  // exposes `window.desktopBridge`, which also carries the control port the
-  // host half needs. Nothing here requires it — outside a shell the panel
-  // degrades to an iframe.
-  const desktopBridge = (globalThis as { desktopBridge?: { browserPort?: number } }).desktopBridge
-  if (desktopBridge?.browserPort) {
-    browserStore.setInShell(true)
-  }
+  ctx.effect(() => ctx.locale.register(NS, LOCALES), 'builtin-browser: copy')
+  const t = ctx.locale.bind(NS)
 
-  // Wire the element-picking flow: the send callback resolves `sessions` lazily,
-  // and the mount keeps picking in sync with the panel's open state.
-  setupPickFlow({ sendPrompt: (text) => sendToSession(ctx, text) })
-  mountPickFlow()
+  // Element picking sends into the tab's own Session.
+  setupPickFlow({ sendPrompt: (sessionId, text) => sendToSession(ctx, sessionId, text, t) })
 
   // Publish the page-side controller the Desktop shell drives via
-  // executeJavaScript (desktop/main.cjs). Owned by this fiber: removed when
-  // the plugin stops or updates, so stale pages never answer commands.
+  // executeJavaScript (desktop/main.cjs). Owned by this fiber, so a stopped or
+  // updated plugin leaves no stale controller answering shell commands.
   const win = globalThis as { [CONTROLLER_KEY]?: unknown }
   win[CONTROLLER_KEY] = pageBrowserController
   ctx.effect(() => () => {
-    if (win[CONTROLLER_KEY] === pageBrowserController) {
-      delete win[CONTROLLER_KEY]
-    }
+    if (win[CONTROLLER_KEY] === pageBrowserController) delete win[CONTROLLER_KEY]
+    clearActiveBrowserPage()
+  }, 'builtin-browser: controller')
+
+  // Stage one: the tab TYPE and its guide capsule.
+  ctx.effect(() => ctx.sidebarRightTabs.register(browserDefinition(t)), 'builtin-browser: type')
+
+  // The face every browser tab body receives: one more tab beside this one.
+  const injected: BrowserTabInjected = {
+    openAnotherTab: () => ctx.sidebarRight.openTab(BROWSER_KIND),
+  }
+
+  // Stage two: the body, keyed by this implementation's id. The seat supplies
+  // the standard props (`useTabInfo`, `sessionId`) and, through `locale`, the
+  // `t` seat the component renders with.
+  ctx.effect(() => slots.inject('sidebar.right.pane.tab', () => slots.register(
+    { name: 'sidebar.right.pane.tab', key: 'dsh-builtin-browser', locale: NS, inject: () => injected },
+    BrowserTab,
+  )), 'builtin-browser: body')
+
+  // The chip: a globe plus the localized type label, so the strip follows the
+  // active language instead of a title captured when the tab opened.
+  ctx.effect(() => slots.inject('sidebar.right.pane.tab.title', () => slots.register(
+    { name: 'sidebar.right.pane.tab.title', key: 'dsh-builtin-browser', locale: NS, inject: () => injected },
+    BrowserTitle,
+  )), 'builtin-browser: title')
+
+  // `browser.new`: one more tab, next to the focused page.
+  ctx.inject(['shortcuts'], (shortcutCtx) => {
+    shortcutCtx.effect(
+      () => shortcutCtx.shortcuts.register(newTabCommand(ctx, () => t('guide.title'))),
+      'builtin-browser: new-tab shortcut',
+    )
   })
-
-  slots.inject('sidebar.footer.action', () => slots.register(
-    { name: 'sidebar.footer.action', id: 'builtin-browser', order: 10, label: () => browserStore.get().open ? '关闭浏览器' : '内置浏览器' },
-    BrowserToggle,
-  ))
-
-  slots.inject('shell.overlay', () => slots.register(
-    { name: 'shell.overlay', id: 'builtin-browser', order: 10, label: () => '内置浏览器' },
-    BrowserPanel,
-  ))
 }

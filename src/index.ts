@@ -31,7 +31,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 export const name = 'builtin-browser'
 
@@ -132,7 +133,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       reportedPort = port
       ctx.logger.info(`[builtin-browser] control endpoint registered on port ${port} (RPC)`)
       return { ok: true, value: { port } }
-    }, { authority: 'loopback' })
+    })
   })
 
   /** Resolve the endpoint, honoring an explicit config override first. */
@@ -387,7 +388,10 @@ export function apply(ctx: Context, config: Config = {}): void {
     }
   }
 
-  ctx.on('agent/created', ({ agent }: { agent: Agent }) => reconcileMask(agent))
+  ctx.on('agent/created', ({ agent }: { agent: Agent }): undefined => {
+    reconcileMask(agent)
+    return undefined
+  })
   ctx.on('agent/disposed', ({ agent }: { agent: Agent }) => {
     const dispose = maskDisposers.get(agent.id)
     if (dispose !== undefined) {
