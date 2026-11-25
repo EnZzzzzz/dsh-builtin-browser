@@ -33,7 +33,7 @@ import {
   type BrowserTabRecord,
   type PageSurfaceElement,
 } from './store.js'
-import { IconArrowLeft, IconArrowRight, IconCrosshair, IconPlus, IconRotateCw, IconSquare, IconX } from './icons.js'
+import { IconArrowLeft, IconArrowRight, IconClose, IconCrosshair, IconPlus, IconRotateCw, IconSquare } from './icons.js'
 
 /** Runtime props of a tab body: owner tab information plus the locale seat. */
 export type BrowserTabProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'builtinBrowser'>
@@ -52,16 +52,18 @@ const BROWSER_CSS = `
 /* ONE row holds navigation, the tab pills, and the page actions. The pills are
    the address bar too: clicking the active pill turns it into an editor that
    grows sideways, exactly like the original panel. */
-.dsh-bb-bar{display:flex;align-items:center;gap:2px;flex:none;padding:4px 6px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.25))}
-.dsh-bb-btn{display:flex;align-items:center;justify-content:center;flex:none;border:none;background:transparent;cursor:pointer;padding:4px;border-radius:6px;color:inherit;opacity:.75;transition:background-color 120ms ease,opacity 120ms ease}
+.dsh-bb-bar{display:flex;align-items:center;gap:3px;flex:none;padding:5px 6px;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(127,127,127,.25))}
+.dsh-bb-btn{display:flex;align-items:center;justify-content:center;flex:none;border:none;background:transparent;cursor:pointer;padding:5px;border-radius:6px;color:inherit;opacity:.75;transition:background-color 120ms ease,opacity 120ms ease}
 .dsh-bb-btn:hover:not(:disabled){background:color-mix(in srgb,var(--dsw-alias-label-primary,#111) 8%,transparent);opacity:1}
 .dsh-bb-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4D6BFE);outline-offset:-1px;opacity:1}
 .dsh-bb-btn:disabled{opacity:.3;cursor:default}
 .dsh-bb-btn[aria-pressed="true"]{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4D6BFE) 22%,transparent);opacity:1}
 
 /* The strip shares the row with the navigation buttons and scrolls when
-   crowded; the pills never push the page actions out of the pane. */
-.dsh-bb-strip{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+   crowded; the pills never push the page actions out of the pane. The minimum
+   page controls the row height, not the pills, so it stays put while a pill
+   grows and the page below never jumps mid-animation. */
+.dsh-bb-strip{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;min-height:28px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .dsh-bb-strip::-webkit-scrollbar{display:none}
 
 /* New-tab entrance: the pill grows from ZERO width to its natural width. Only
@@ -72,19 +74,57 @@ const BROWSER_CSS = `
    animation ends, then the store drops the tab. */
 @keyframes dsh-bb-tab-out{to{min-width:0;max-width:0;padding-left:0;padding-right:0;opacity:0}}
 
-.dsh-bb-tab{display:flex;align-items:center;gap:6px;box-sizing:border-box;flex:0 1 auto;min-width:80px;max-width:150px;overflow:hidden;animation:dsh-bb-tab-in 200ms cubic-bezier(.22,1,.36,1);padding:3px 5px 3px 9px;border:1px solid transparent;border-radius:8px;cursor:pointer;color:inherit;font:inherit;font-size:12.5px;background:transparent;opacity:.62;transition:background-color 120ms ease,opacity 120ms ease,max-width 220ms cubic-bezier(.22,1,.36,1),flex-basis 220ms cubic-bezier(.22,1,.36,1);user-select:none}
+/* Layout: the pill is a shrink-to-fit box whose only IN-FLOW child is the
+   label. The close mark is absolutely positioned, so it does not contribute
+   width. Line: padding-left 10 + label + padding-right 10 = pill width.
+   The label reserves a 26px lane on its right, so the × always lands inside
+   padding: 0 10px / label padding-right 26px / close right 10px, and the pill
+   hugs that composition instead of centring a short label inside a wide box
+   (which is what left a gap to the right of the ×). */
+/* The pill is a 2-column GRID, not a free flex row:
+     column 1 = the title (or the address editor while editing)
+     column 2 = the close mark's fixed 16px lane
+   Grid puts each child in a named track, so the × always sits in the right
+   column no matter how wide the title or the editor turns out to be. The flex
+   versions failed exactly here: the × was a flow item placed after the label,
+   so while editing (label collapsed to 0 width and the input overlaid as an
+   absolute layer) the × landed a third of the way into a 340px pill. */
+.dsh-bb-tab{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 16px;column-gap:2px;align-items:center;justify-items:center;box-sizing:border-box;flex:0 1 auto;min-width:0;max-width:184px;overflow:hidden;animation:dsh-bb-tab-in 200ms cubic-bezier(.22,1,.36,1);padding:0 4px 0 10px;border:1px solid transparent;border-radius:8px;cursor:pointer;color:inherit;font:inherit;font-size:12.5px;line-height:18px;background:transparent;opacity:.62;user-select:none;
+  /* One duration and one curve for both directions. The expanded pill uses this
+     same transition, because the editing rule below changes only width and
+     max-width — the properties this declaration animates. A transition declared
+     ON the editing class could only play while entering it; leaving the class
+     removes the declaration in the same frame, which is why the collapse used to
+     snap back with no animation. */
+  transition:width 220ms cubic-bezier(.22,1,.36,1),max-width 220ms cubic-bezier(.22,1,.36,1),background-color 120ms ease,opacity 120ms ease}
 .dsh-bb-tab:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#111) 7%,transparent);opacity:.9}
 .dsh-bb-tab[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1,color-mix(in srgb,var(--dsw-alias-label-primary,#111) 5%,transparent));border-color:var(--dsw-alias-border-l1,rgba(127,127,127,.3));opacity:1}
 .dsh-bb-tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4D6BFE);outline-offset:-2px}
 .dsh-bb-tab.dsh-bb-closing{animation:dsh-bb-tab-out 260ms cubic-bezier(.33,1,.68,1);pointer-events:none}
-/* Editing: the pill widens in place and shows the inline address editor. */
-.dsh-bb-tab.dsh-bb-editing{cursor:text;flex:1 1 220px;max-width:260px}
-.dsh-bb-tabLabel{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dsh-bb-tabInput{flex:1;min-width:60px;border:none;outline:none;background:transparent;color:inherit;font:inherit;font-size:12.5px;padding:0}
+/* Editing: the pill widens in place. width is transitioned above, so opening and
+   closing are driven by the same declaration and animate in both directions. */
+.dsh-bb-tab.dsh-bb-editing{cursor:text;width:min(340px,100%);max-width:340px}
+/* Column 1: a nested flex row holding the optional spinner and the title. */
+.dsh-bb-tabMain{grid-column:1;display:flex;align-items:center;min-width:0;max-width:100%;overflow:hidden}
+/* The title ellipsises inside that row instead of widening the grid. */
+.dsh-bb-tabLabel{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* The editor is an overlay over column 1 ONLY. Its right inset is the close
+   lane plus the gap plus the pill's right padding (16 + 2 + 4 = 22), so the
+   input's own box stops before column 2 and can never paint under the ×. */
+.dsh-bb-tabInput{grid-column:1;position:absolute;top:1px;bottom:1px;left:10px;right:22px;z-index:1;min-width:0;margin:0;padding:0;border:none;border-radius:7px;outline:none;background:transparent;color:inherit;font:inherit;font-size:12.5px;line-height:18px}
 .dsh-bb-tabInput::placeholder{color:var(--dsw-alias-label-secondary,#999)}
-.dsh-bb-tab .dsh-bb-btn{padding:2px;opacity:.5}
-.dsh-bb-tab:hover .dsh-bb-btn,.dsh-bb-tab[aria-selected="true"] .dsh-bb-btn{opacity:.75}
-.dsh-bb-tabSpinner{flex:none;width:10px;height:10px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#4D6BFE) 30%,transparent);border-top-color:var(--dsw-alias-brand-primary,#4D6BFE);animation:dsh-bb-spin .7s linear infinite}
+/* While editing the input paints the address (or its placeholder) over column 1,
+   so the static title steps aside. The × stays visible and does not move: it
+   owns column 2 in both states. */
+.dsh-bb-tab.dsh-bb-editing .dsh-bb-tabLabel{opacity:0}
+/* Column 2, pinned by the grid rather than by an offset. */
+.dsh-bb-tab .dsh-bb-close{grid-column:2;justify-self:center;align-self:center;display:flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;border:none;border-radius:50%;background:transparent;color:inherit;cursor:pointer;opacity:.45;transition:background-color 120ms ease,opacity 120ms ease}
+.dsh-bb-tab:hover .dsh-bb-close,.dsh-bb-tab[aria-selected="true"] .dsh-bb-close,.dsh-bb-close:focus-visible{opacity:.85}
+.dsh-bb-tab .dsh-bb-close:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#111) 14%,transparent);opacity:1}
+.dsh-bb-close:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4D6BFE);outline-offset:1px}
+/* Column 1 as well: the spinner rides with the title it belongs to, so it can
+   never take the close mark's track. */
+.dsh-bb-tabSpinner{flex:none;width:10px;height:10px;margin-right:6px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--dsw-alias-brand-primary,#4D6BFE) 30%,transparent);border-top-color:var(--dsw-alias-brand-primary,#4D6BFE);animation:dsh-bb-spin .7s linear infinite}
 @keyframes dsh-bb-spin{to{transform:rotate(360deg)}}
 
 .dsh-bb-notice{flex:none;padding:6px 10px;font-size:12px;border-bottom:1px solid transparent;line-height:1.4}
@@ -432,6 +472,9 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
 
   const activeLoading = active?.loading ?? false
   const inShell = snapshot.inShell
+  // Closing is offered only while another tab would remain. A lone tab cannot
+  // be closed (the store would respawn a blank one), so the control is absent.
+  const closeable = snapshot.tabs.length > 1
 
   return (
     <div className="dsh-bb-root" data-builtin-browser-tabs={snapshot.tabs.length}>
@@ -495,7 +538,7 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
                 title={isEditing ? undefined : (tab.current || tab.address || t('tab.blank'))}
                 onAuxClick={(event) => {
                   // Middle click closes, like every other tab strip.
-                  if (event.button === 1) {
+                  if (event.button === 1 && closeable) {
                     event.preventDefault()
                     requestClose(tab.id)
                   }
@@ -517,8 +560,34 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
                   if (event.animationName === 'dsh-bb-tab-out') finishClose(tab.id)
                 }}
               >
-                {tab.loading && !isEditing && <span className="dsh-bb-tabSpinner" aria-hidden="true" />}
-                {isEditing ? (
+                {/* Column 1 keeps the spinner and the title in one nested flex
+                    row; the close mark owns column 2. */}
+                <span className="dsh-bb-tabMain">
+                  {tab.loading && !isEditing && <span className="dsh-bb-tabSpinner" aria-hidden="true" />}
+                  {/* Label and close mark stay mounted while editing. The editor
+                      overlays them instead of replacing them, so the pill can
+                      animate its width open and shut without the address text
+                      being laid out again on every frame. */}
+                  <span className="dsh-bb-tabLabel">{tabLabel(tab, t('tab.blank'))}</span>
+                </span>
+                {/* The last tab has no close control: closing it would only
+                    respawn a blank replacement, so the affordance is dropped
+                    instead of being offered and then no-oping. */}
+                {closeable && (
+                  <button
+                    type="button"
+                    className="dsh-bb-close"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      requestClose(tab.id)
+                    }}
+                    title={t('tab.close')}
+                    aria-label={`${t('tab.close')} ${tabLabel(tab, t('tab.blank'))}`}
+                  >
+                    <IconClose size={9} />
+                  </button>
+                )}
+                {isEditing && (
                   <input
                     className="dsh-bb-tabInput"
                     autoFocus
@@ -538,21 +607,7 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
                     autoComplete="off"
                     inputMode="url"
                   />
-                ) : (
-                  <span className="dsh-bb-tabLabel">{tabLabel(tab, t('tab.blank'))}</span>
                 )}
-                <button
-                  type="button"
-                  className="dsh-bb-btn"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    requestClose(tab.id)
-                  }}
-                  title={t('tab.close')}
-                  aria-label={`${t('tab.close')} ${tabLabel(tab, t('tab.blank'))}`}
-                >
-                  <IconX size={10} />
-                </button>
               </div>
             )
           })}

@@ -32,7 +32,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserTab } from '../src/client/BrowserTab.js'
 import type { BrowserTabProps } from '../src/client/BrowserTab.js'
 import { setupPickFlow, stopPicking, togglePicking } from '../src/client/pick-flow.js'
-import { createBrowserPageStore, type BrowserPageStore } from '../src/client/store.js'
+import { claimBrowser, createBrowserStore, type BrowserStore } from '../src/client/store.js'
 import { buildInjectionCode } from '../src/client/picker-script.js'
 import { LOCALES } from '../src/client/locales.js'
 
@@ -91,25 +91,27 @@ function translate(key: keyof (typeof LOCALES)['zh']): string {
 function TabHarness(props: { visible: boolean; onNewTab: () => void }): ReactNode {
   const { visible, onNewTab } = props
   // Stable per mount, so a "remount" button creates a genuinely fresh body.
-  const storeRef = useRef<BrowserPageStore | null>(null)
+  const storeRef = useRef<BrowserStore | null>(null)
   if (storeRef.current === null) {
-    storeRef.current = createBrowserPageStore({
+    storeRef.current = createBrowserStore({
       // The playground has no real Session; the store only keys its checkpoint.
-      sessionId: 'playground' as unknown as Parameters<typeof createBrowserPageStore>[0]['sessionId'],
+      sessionId: 'playground' as unknown as Parameters<typeof createBrowserStore>[0]['sessionId'],
       checkpointKey: null,
       inShell: true,
     })
   }
   const store = storeRef.current
 
-  // Give the body a live surface: its own <webview>/<iframe> never mounts in
-  // this harness, so bind the fake one and let the pick flow use it.
+  // Give every tab a live surface: the body's own <webview>/<iframe> never
+  // mounts in this harness, so bind the fake one to each tab and let the pick
+  // flow use the active tab's.
   useEffect(() => {
-    store.setSurface(surface)
+    const tabId = store.getSnapshot().activeTabId
+    store.setSurface(tabId, surface)
   }, [store])
 
   useEffect(() => {
-    if (visible) store.claim()
+    if (visible) claimBrowser(store)
   }, [store, visible])
 
   // Sync the picking state into the harness so Escape can restore it.

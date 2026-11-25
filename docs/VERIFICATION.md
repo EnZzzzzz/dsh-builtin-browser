@@ -99,6 +99,20 @@ address input, the pill strip inside the toolbar, pills rendering their label
 the stylesheet. NOT verified: the animation timing and the inline editor feel —
 those need the running page.
 
+## The last tab is not closeable
+
+Reported: closing the only remaining (blank) tab dropped it and instantly
+respawned a blank one, so the × looked broken.
+
+- The close control is not rendered while one tab remains (`closeable =
+  tabs.length > 1`), and the middle-click close respects the same rule.
+- `store.closeTab` also returns early when one tab is left, so no caller —
+  including `browser_tab_close` from an agent — can reintroduce the
+  close-then-respawn cycle. The dead "respawn a blank tab" branch is gone.
+
+Verified: server-rendering a fresh instance emits zero close controls
+(`aria-label="关闭标签页"` count 0), and both guards are present in the source.
+
 ## Sizing fix (page cut off inside the panel)
 
 A page could be cut off on the right and bottom. Three causes, two fixed here:

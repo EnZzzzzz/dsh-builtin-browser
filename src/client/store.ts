@@ -312,18 +312,16 @@ export function createBrowserStore(options: {
     closeTab(tabId) {
       const index = state.tabs.findIndex((tab) => tab.id === tabId)
       if (index === -1) return
+      // The last tab is not closeable: it never disappears, so the strip cannot
+      // close a page and immediately respawn a blank one.
+      if (state.tabs.length <= 1) return
       // Drop the reference only. React owns the DOM: the surface unmounts when
       // its record leaves `tabs`, and removing the node here would leave React
       // holding a detached element and tear the whole view down.
       surfaces.delete(tabId)
-      let tabs = state.tabs.filter((tab) => tab.id !== tabId)
+      const tabs = state.tabs.filter((tab) => tab.id !== tabId)
       let activeTabId = state.activeTabId
-      if (tabs.length === 0) {
-        const blank = makeTab('', '')
-        tabs = [blank]
-        activeTabId = blank.id
-      }
-      else if (activeTabId === tabId) {
+      if (activeTabId === tabId) {
         // Focus the neighbour that took the closed tab's place, else the last.
         activeTabId = tabs[Math.min(index, tabs.length - 1)].id
       }

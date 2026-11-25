@@ -110,6 +110,15 @@ export function IconPlus(props: IconProps): ReactNode {
   )
 }
 
+/** Radix `cross-2` — the in-pill close mark on a browser tab. */
+export function IconClose(props: IconProps): ReactNode {
+  return (
+    <Svg {...props}>
+      <P d="M3.64645 2.85355C3.45118 2.65829 3.45118 2.34171 3.64645 2.14645C3.84171 1.95118 4.15829 1.95118 4.35355 2.14645L7.5 5.29289L10.6464 2.14645C10.8417 1.95118 11.1583 1.95118 11.3536 2.14645C11.5488 2.34171 11.5488 2.65829 11.3536 2.85355L8.20711 6L11.3536 9.14645C11.5488 9.34171 11.5488 9.65829 11.3536 9.85355C11.1583 10.0488 10.8417 10.0488 10.6464 9.85355L7.5 6.70711L4.35355 9.85355C4.15829 10.0488 3.84171 10.0488 3.64645 9.85355C3.45118 9.65829 3.45118 9.34171 3.64645 9.14645L6.79289 6L3.64645 2.85355Z" />
+    </Svg>
+  )
+}
+
 /** Radix `cross-1` — close the panel. */
 export function IconX(props: IconProps): ReactNode {
   return (
