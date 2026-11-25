@@ -66,21 +66,15 @@ const BROWSER_CSS = `
 .dsh-bb-strip{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;min-height:28px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 .dsh-bb-strip::-webkit-scrollbar{display:none}
 
-/* New-tab entrance: the pill grows from ZERO width to its natural width. Only
-   the from-frame is keyed, so it lands on whatever the computed width is — a
-   compact pill, or a wide one when the tab opens straight into editing. */
-@keyframes dsh-bb-tab-in{from{min-width:0;max-width:0;padding-left:0;padding-right:0;opacity:0}}
-/* Close: shrink and fade on a slow-out curve; the pill stays mounted until the
-   animation ends, then the store drops the tab. */
-@keyframes dsh-bb-tab-out{to{min-width:0;max-width:0;padding-left:0;padding-right:0;opacity:0}}
+/* New-tab entrance: the pill fades in with a small lift, which keeps adding a
+   tab from feeling like it snapped into place. Only the from-frame is keyed, so
+   the animation lands wherever the pill's own layout puts it. This is the only
+   motion in the strip: opening and closing the editor are instant, and closing a
+   tab is a plain removal, so nothing ever re-flows the strip mid-animation. */
+@keyframes dsh-bb-tab-in{
+  from{opacity:0;transform:translateY(2px) scale(.96)}
+}
 
-/* Layout: the pill is a shrink-to-fit box whose only IN-FLOW child is the
-   label. The close mark is absolutely positioned, so it does not contribute
-   width. Line: padding-left 10 + label + padding-right 10 = pill width.
-   The label reserves a 26px lane on its right, so the × always lands inside
-   padding: 0 10px / label padding-right 26px / close right 10px, and the pill
-   hugs that composition instead of centring a short label inside a wide box
-   (which is what left a gap to the right of the ×). */
 /* The pill is a 2-column GRID, not a free flex row:
      column 1 = the title (or the address editor while editing)
      column 2 = the close mark's fixed 16px lane
@@ -88,39 +82,51 @@ const BROWSER_CSS = `
    column no matter how wide the title or the editor turns out to be. The flex
    versions failed exactly here: the × was a flow item placed after the label,
    so while editing (label collapsed to 0 width and the input overlaid as an
-   absolute layer) the × landed a third of the way into a 340px pill. */
-.dsh-bb-tab{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 16px;column-gap:2px;align-items:center;justify-items:center;box-sizing:border-box;flex:0 1 auto;min-width:0;max-width:184px;overflow:hidden;animation:dsh-bb-tab-in 200ms cubic-bezier(.22,1,.36,1);padding:0 4px 0 10px;border:1px solid transparent;border-radius:8px;cursor:pointer;color:inherit;font:inherit;font-size:12.5px;line-height:18px;background:transparent;opacity:.62;user-select:none;
-  /* One duration and one curve for both directions. The expanded pill uses this
-     same transition, because the editing rule below changes only width and
-     max-width — the properties this declaration animates. A transition declared
-     ON the editing class could only play while entering it; leaving the class
-     removes the declaration in the same frame, which is why the collapse used to
-     snap back with no animation. */
-  transition:width 220ms cubic-bezier(.22,1,.36,1),max-width 220ms cubic-bezier(.22,1,.36,1),background-color 120ms ease,opacity 120ms ease}
+   absolute layer) the × landed a third of the way into the pill. */
+.dsh-bb-tab{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 16px;column-gap:2px;align-items:center;justify-items:center;box-sizing:border-box;flex:0 0 auto;flex-shrink:1;width:150px;max-width:100%;overflow:hidden;animation:dsh-bb-tab-in 200ms cubic-bezier(.22,1,.36,1);padding:0 4px;border:1px solid transparent;border-radius:8px;cursor:pointer;color:inherit;font:inherit;font-size:12.5px;line-height:18px;background:transparent;opacity:.62;user-select:none;
+  /* Entering and leaving the editor is INSTANT. Animating the width laid the
+     pill out on every frame, and the title re-centring and the editor appearing
+     had to be re-laid-out with it, which read as stutter for no real benefit.
+     The pill keeps one shape; only the tab's own entrance animates. */
+  transition:background-color 120ms ease,opacity 120ms ease}
 .dsh-bb-tab:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#111) 7%,transparent);opacity:.9}
 .dsh-bb-tab[aria-selected="true"]{background:var(--dsw-alias-bg-layer-1,color-mix(in srgb,var(--dsw-alias-label-primary,#111) 5%,transparent));border-color:var(--dsw-alias-border-l1,rgba(127,127,127,.3));opacity:1}
 .dsh-bb-tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4D6BFE);outline-offset:-2px}
-.dsh-bb-tab.dsh-bb-closing{animation:dsh-bb-tab-out 260ms cubic-bezier(.33,1,.68,1);pointer-events:none}
-/* Editing: the pill widens in place. width is transitioned above, so opening and
-   closing are driven by the same declaration and animate in both directions. */
-.dsh-bb-tab.dsh-bb-editing{cursor:text;width:min(340px,100%);max-width:340px}
+/* Editing does NOT resize the pill: the address editor replaces the title inside
+   the space the tab already has. Widening on click made the whole strip reflow
+   and pushed the neighbouring tabs sideways for what is really just a text
+   field gaining focus. */
+.dsh-bb-tab.dsh-bb-editing{cursor:text}
 /* Column 1: a nested flex row holding the optional spinner and the title. */
-.dsh-bb-tabMain{grid-column:1;display:flex;align-items:center;min-width:0;max-width:100%;overflow:hidden}
+.dsh-bb-tabMain{grid-column:1;display:flex;align-items:center;justify-content:center;min-width:0;max-width:100%;overflow:hidden}
 /* The title ellipsises inside that row instead of widening the grid. */
-.dsh-bb-tabLabel{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsh-bb-tabLabel{flex:1 1 auto;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* The editor is an overlay over column 1 ONLY. Its right inset is the close
    lane plus the gap plus the pill's right padding (16 + 2 + 4 = 22), so the
    input's own box stops before column 2 and can never paint under the ×. */
-.dsh-bb-tabInput{grid-column:1;position:absolute;top:1px;bottom:1px;left:10px;right:22px;z-index:1;min-width:0;margin:0;padding:0;border:none;border-radius:7px;outline:none;background:transparent;color:inherit;font:inherit;font-size:12.5px;line-height:18px}
+/* The editor occupies the title's slot and REPLACES it, with no cross-fade.
+   Fading the title out while fading the editor in made one click show three
+   different texts in sequence (title, placeholder, caret) and read as stutter.
+   Hidden/shown in one frame, the swap looks like the same text becoming
+   editable. It stays mounted so opening never adds a node: the closed state
+   only makes it non-painting and inert. */
+.dsh-bb-tabInput{grid-column:1;position:absolute;top:1px;bottom:1px;left:4px;right:22px;width:auto;z-index:1;box-sizing:border-box;min-width:0;margin:0;padding:0;border:none;border-radius:7px;outline:none;background:transparent;color:inherit;font:inherit;font-size:12.5px;line-height:18px;text-align:center;opacity:0;visibility:hidden;pointer-events:none}
+.dsh-bb-tab.dsh-bb-editing .dsh-bb-tabInput{opacity:1;visibility:visible;pointer-events:auto}
 .dsh-bb-tabInput::placeholder{color:var(--dsw-alias-label-secondary,#999)}
 /* While editing the input paints the address (or its placeholder) over column 1,
    so the static title steps aside. The × stays visible and does not move: it
    owns column 2 in both states. */
-.dsh-bb-tab.dsh-bb-editing .dsh-bb-tabLabel{opacity:0}
+/* The title is hidden in the same frame the editor takes over, so the slot
+   never shows both at once and never goes empty in between. */
+.dsh-bb-tab.dsh-bb-editing .dsh-bb-tabLabel{visibility:hidden}
 /* Column 2, pinned by the grid rather than by an offset. */
 .dsh-bb-tab .dsh-bb-close{grid-column:2;justify-self:center;align-self:center;display:flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;border:none;border-radius:50%;background:transparent;color:inherit;cursor:pointer;opacity:.45;transition:background-color 120ms ease,opacity 120ms ease}
 .dsh-bb-tab:hover .dsh-bb-close,.dsh-bb-tab[aria-selected="true"] .dsh-bb-close,.dsh-bb-close:focus-visible{opacity:.85}
 .dsh-bb-tab .dsh-bb-close:hover{background:color-mix(in srgb,var(--dsw-alias-label-primary,#111) 14%,transparent);opacity:1}
+/* One tab left: the close mark is disabled, not hidden. It keeps its slot so
+   the pill is unchanged, but drops the hover affordance and stays inert. */
+.dsh-bb-tab .dsh-bb-close:disabled{cursor:default;opacity:.28}
+.dsh-bb-tab .dsh-bb-close:disabled:hover{background:transparent;opacity:.28}
 .dsh-bb-close:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4D6BFE);outline-offset:1px}
 /* Column 1 as well: the spinner rides with the title it belongs to, so it can
    never take the close mark's track. */
@@ -309,8 +315,6 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
   const [snapshot, setSnapshot] = useState(store.getSnapshot())
   // The pill being edited inline (its id), plus the draft its input shows.
   const [editing, setEditing] = useState<number | null>(null)
-  // Pills mid close-out animation stay mounted until their animation ends.
-  const [closingIds, setClosingIds] = useState<number[]>([])
   const [draft, setDraft] = useState('')
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
@@ -423,17 +427,20 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
     else element.setAttribute('src', url)
   }, [store])
 
-  /** Start the close-out animation for one pill; removal waits for its end. */
+  /**
+   * Close a pill.
+   *
+   * The removal is immediate and single-commit. An earlier version animated the
+   * departing pill in place and dropped it only when the animation ended, which
+   * meant the node kept its slot at full size, then vanished while the strip
+   * slid everything over — visible as a one-frame flash of a tab where none
+   * should be. Closing now frees the space in the same commit it happens, and
+   * the remaining pills simply lay out again.
+   */
   const requestClose = useCallback((tabId: number): void => {
     if (editing === tabId) setEditing(null)
-    setClosingIds((current) => (current.includes(tabId) ? current : [...current, tabId]))
-  }, [editing])
-
-  /** Drop a pill whose close-out animation finished. */
-  const finishClose = useCallback((tabId: number): void => {
-    setClosingIds((current) => current.filter((id) => id !== tabId))
     store.closeTab(tabId)
-  }, [store])
+  }, [editing, store])
 
   /** The + button: a new blank tab that opens straight into its address editor. */
   const openNewTab = useCallback((): void => {
@@ -472,8 +479,10 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
 
   const activeLoading = active?.loading ?? false
   const inShell = snapshot.inShell
-  // Closing is offered only while another tab would remain. A lone tab cannot
-  // be closed (the store would respawn a blank one), so the control is absent.
+  // A lone tab cannot be closed (the store refuses, so it never respawns a blank
+  // one). The control stays VISIBLE and occupies its grid column so the pill
+  // keeps its width, but it is disabled: hiding it left the pill looking
+  // half-empty and shifted the title every time the last tab was reached.
   const closeable = snapshot.tabs.length > 1
 
   return (
@@ -527,14 +536,13 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
           {snapshot.tabs.map((tab) => {
             const selected = tab.id === active?.id
             const isEditing = editing === tab.id
-            const closing = closingIds.includes(tab.id)
             return (
               <div
                 key={tab.id}
                 role="tab"
                 tabIndex={selected ? 0 : -1}
                 aria-selected={selected}
-                className={`dsh-bb-tab${isEditing ? ' dsh-bb-editing' : ''}${closing ? ' dsh-bb-closing' : ''}`}
+                className={`dsh-bb-tab${isEditing ? ' dsh-bb-editing' : ''}`}
                 title={isEditing ? undefined : (tab.current || tab.address || t('tab.blank'))}
                 onAuxClick={(event) => {
                   // Middle click closes, like every other tab strip.
@@ -556,9 +564,6 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
                   if (selected) startEditing(tab)
                   else store.activateTab(tab.id)
                 }}
-                onAnimationEnd={(event) => {
-                  if (event.animationName === 'dsh-bb-tab-out') finishClose(tab.id)
-                }}
               >
                 {/* Column 1 keeps the spinner and the title in one nested flex
                     row; the close mark owns column 2. */}
@@ -570,44 +575,69 @@ export function BrowserTab(props: BrowserTabProps): ReactNode {
                       being laid out again on every frame. */}
                   <span className="dsh-bb-tabLabel">{tabLabel(tab, t('tab.blank'))}</span>
                 </span>
-                {/* The last tab has no close control: closing it would only
-                    respawn a blank replacement, so the affordance is dropped
-                    instead of being offered and then no-oping. */}
-                {closeable && (
-                  <button
-                    type="button"
-                    className="dsh-bb-close"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      requestClose(tab.id)
-                    }}
-                    title={t('tab.close')}
-                    aria-label={`${t('tab.close')} ${tabLabel(tab, t('tab.blank'))}`}
-                  >
-                    <IconClose size={9} />
-                  </button>
-                )}
-                {isEditing && (
-                  <input
-                    className="dsh-bb-tabInput"
-                    autoFocus
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onFocus={(event) => event.target.select()}
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => {
-                      event.stopPropagation()
-                      if (event.key === 'Enter') commitEdit(tab.id, draft)
-                      else if (event.key === 'Escape') stopEditing()
-                    }}
-                    onBlur={() => commitEdit(tab.id, draft)}
-                    placeholder={t('address.placeholder')}
-                    aria-label={`${t('tab.edit')} ${tabLabel(tab, t('tab.blank'))}`}
-                    spellCheck={false}
-                    autoComplete="off"
-                    inputMode="url"
-                  />
-                )}
+                {/* Always rendered so the pill keeps the same shape and the
+                    title never shifts. With only one tab left it is disabled
+                    rather than hidden: closing the last page is never offered,
+                    and the button still fills the grid column that keeps the
+                    pill from looking half-empty. */}
+                <button
+                  type="button"
+                  className="dsh-bb-close"
+                  disabled={!closeable}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    if (!closeable) return
+                    requestClose(tab.id)
+                  }}
+                  title={t('tab.close')}
+                  aria-label={`${t('tab.close')} ${tabLabel(tab, t('tab.blank'))}`}
+                >
+                  <IconClose size={9} />
+                </button>
+                {/* The editor is MOUNTED in both states and only faded. Mounting
+                    it on the click frame added the input, ran the focus and
+                    selected its text all in the same frame the width transition
+                    started, which is what made opening feel like dropped
+                    frames. Kept in the tree, the animating frames do layout
+                    work for the width alone. It is inert while closed:
+                    tabIndex -1 keeps it out of the tab order,
+                    pointer-events:none keeps it from swallowing the pill's
+                    click, and it only paints once .editing fades it in. */}
+                <input
+                  className="dsh-bb-tabInput"
+                  tabIndex={isEditing ? 0 : -1}
+                  aria-hidden={!isEditing}
+                  ref={(element) => {
+                    if (element === null) return
+                    if (isEditing) {
+                      if (document.activeElement !== element) {
+                        element.focus()
+                        element.select()
+                      }
+                    }
+                    else if (document.activeElement === element) {
+                      element.blur()
+                    }
+                  }}
+                  value={draft === '' ? tabLabel(tab, t('tab.blank')) : draft}
+                  readOnly={!isEditing}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onFocus={(event) => event.target.select()}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    event.stopPropagation()
+                    if (event.key === 'Enter') commitEdit(tab.id, draft)
+                    else if (event.key === 'Escape') stopEditing()
+                  }}
+                  onBlur={() => {
+                    if (isEditing) commitEdit(tab.id, draft)
+                  }}
+                  placeholder={t('address.placeholder')}
+                  aria-label={`${t('tab.edit')} ${tabLabel(tab, t('tab.blank'))}`}
+                  spellCheck={false}
+                  autoComplete="off"
+                  inputMode="url"
+                />
               </div>
             )
           })}

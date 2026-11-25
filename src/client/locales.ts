@@ -49,7 +49,10 @@ const zh: Record<BuiltinBrowserKey, string> = {
   'type.label': '内置浏览器',
   'guide.title': '内置浏览器',
   'guide.description': '在侧边栏浏览网页，并让助手直接读取页面',
-  'address.placeholder': '输入网址后回车',
+  // Deliberately the SAME string as the blank tab's title: clicking a fresh tab
+  // shows this line in the address editor, and a different wording here read as
+  // the text changing under the cursor.
+  'address.placeholder': '新标签页',
   'nav.back': '后退',
   'nav.forward': '前进',
   'nav.reload': '刷新',
@@ -74,7 +77,9 @@ const en: Record<BuiltinBrowserKey, string> = {
   'type.label': 'Built-in browser',
   'guide.title': 'Built-in browser',
   'guide.description': 'Browse the web beside the conversation and let the agent read the page',
-  'address.placeholder': 'Enter a URL and press Enter',
+  // Same wording as the blank tab title, so opening a blank tab does not swap
+  // the text under the caret.
+  'address.placeholder': 'New tab',
   'nav.back': 'Back',
   'nav.forward': 'Forward',
   'nav.reload': 'Reload',
